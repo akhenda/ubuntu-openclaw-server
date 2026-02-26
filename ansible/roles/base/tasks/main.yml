@@ -19,6 +19,78 @@
       - unattended-upgrades
     state: present
 
+- name: Build list of admin authorized SSH keys
+  ansible.builtin.set_fact:
+    base_admin_authorized_keys: >-
+      {{
+        (
+          (base_admin_ssh_public_keys | default([]))
+          + ([base_admin_ssh_public_key] if (base_admin_ssh_public_key | default('') | trim | length > 0) else [])
+        )
+        | map('trim')
+        | reject('equalto', '')
+        | unique
+        | list
+      }}
+
+- name: Ensure admin SSH keys are provided when required
+  ansible.builtin.assert:
+    that:
+      - base_admin_authorized_keys | length > 0
+    fail_msg: "Set INFRA_ADMIN_SSH_PUBLIC_KEY (or base_admin_ssh_public_keys) before running."
+  when:
+    - base_manage_admin_user | bool
+    - base_require_admin_ssh_key | bool
+
+- name: Configure admin account
+  when: base_manage_admin_user | bool
+  block:
+    - name: Ensure sudo group exists
+      ansible.builtin.group:
+        name: sudo
+        state: present
+
+    - name: Ensure sudo group has sudo privileges
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        state: present
+        regexp: "^%sudo"
+        line: "%sudo ALL=(ALL:ALL) ALL"
+        validate: "/usr/sbin/visudo -cf %s"
+
+    - name: Ensure admin user exists
+      ansible.builtin.user:
+        name: "{{ base_admin_user }}"
+        groups: "{{ base_admin_groups }}"
+        append: true
+        state: present
+        shell: /bin/bash
+        create_home: true
+        password: >-
+          {{
+            base_admin_password_hash
+            if (base_admin_password_hash | length > 0)
+            else ((base_admin_password | password_hash('sha512')) if (base_admin_password | length > 0) else omit)
+          }}
+        password_lock: "{{ (base_admin_password_hash | length == 0) and (base_admin_password | length == 0) }}"
+
+    - name: Ensure admin authorized SSH keys
+      ansible.posix.authorized_key:
+        user: "{{ base_admin_user }}"
+        key: "{{ item }}"
+        state: present
+      loop: "{{ base_admin_authorized_keys }}"
+
+- name: Remove default ubuntu user
+  ansible.builtin.user:
+    name: ubuntu
+    state: absent
+    remove: true
+    force: true
+  when:
+    - base_remove_ubuntu_user | bool
+    - base_admin_user != "ubuntu"
+
 - name: Install fail2ban package when enabled
   ansible.builtin.apt:
     name: fail2ban
@@ -81,6 +153,13 @@
       community.general.ufw:
         direction: outgoing
         policy: allow
+
+    - name: Block legacy SSH port 22 when not in allowed list
+      community.general.ufw:
+        rule: deny
+        port: "22"
+        proto: tcp
+      when: "'22' not in base_allowed_ssh_ports"
 
     - name: Allow SSH ports
       community.general.ufw:

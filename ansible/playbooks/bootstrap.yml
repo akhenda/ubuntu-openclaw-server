@@ -4,8 +4,8 @@
   gather_facts: false
   become: true
   vars:
-    bootstrap_admin_user: ""
-    bootstrap_admin_ssh_public_key: ""
+    bootstrap_admin_user: "{{ lookup('ansible.builtin.env', 'INFRA_ADMIN_USER') | default('', true) }}"
+    bootstrap_admin_ssh_public_key: "{{ lookup('ansible.builtin.env', 'INFRA_ADMIN_SSH_PUBLIC_KEY') | default('', true) }}"
     bootstrap_admin_groups: sudo
   tasks:
     - name: Ensure python3 is present

@@ -49,6 +49,34 @@ make test-vagrant
 make run-prod
 ```
 
+## SSH and User Model
+
+- SSH hardening defaults:
+  - SSH runs on port `1773`
+  - root login disabled
+  - password login disabled (key-only)
+- Firewall defaults:
+  - deny incoming by default
+  - only configured SSH port(s) are allowed
+  - port `22` is denied when not explicitly allowed
+- Admin user defaults:
+  - created as sudo user from env-configurable values
+  - default Ubuntu bootstrap user (`ubuntu`) can be removed
+
+Environment variables supported by defaults:
+
+- `INFRA_ADMIN_USER`
+- `INFRA_ADMIN_SSH_PUBLIC_KEY`
+- `INFRA_ADMIN_PASSWORD` (optional)
+- `INFRA_ADMIN_PASSWORD_HASH` (optional, preferred over plain password)
+
+Example:
+
+```bash
+export INFRA_ADMIN_USER=openclaw
+export INFRA_ADMIN_SSH_PUBLIC_KEY=\"ssh-ed25519 AAAA...you@example\"
+```
+
 ## OpenClaw Behavior
 
 When `openclaw_enable: true`, the `openclaw` role:

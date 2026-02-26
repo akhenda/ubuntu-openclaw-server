@@ -6,6 +6,8 @@
   vars:
     base_apt_upgrade: "no"
     base_manage_firewall: false
+    base_manage_admin_user: false
+    base_remove_ubuntu_user: false
     base_install_fail2ban: false
     base_set_timezone: false
     openclaw_enable: false

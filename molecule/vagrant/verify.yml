@@ -3,6 +3,8 @@
   hosts: all
   become: true
   gather_facts: true
+  vars:
+    expected_ssh_port: "{{ base_ssh_port | default('22') }}"
   tasks:
     - name: Ensure sshd_config exists
       ansible.builtin.stat:
@@ -13,6 +15,19 @@
       ansible.builtin.assert:
         that:
           - sshd_config.stat.exists
+
+    - name: Read sshd_config
+      ansible.builtin.slurp:
+        path: /etc/ssh/sshd_config
+      register: sshd_config_content
+
+    - name: Assert SSH hardening options are applied
+      ansible.builtin.assert:
+        that:
+          - "'PermitRootLogin no' in (sshd_config_content.content | b64decode)"
+          - "'PasswordAuthentication no' in (sshd_config_content.content | b64decode)"
+          - "'Port ' ~ expected_ssh_port in (sshd_config_content.content | b64decode)"
+        fail_msg: "sshd_config does not contain expected port/root/password hardening."
 
     - name: Gather service facts
       ansible.builtin.service_facts:
@@ -44,5 +59,5 @@
       ansible.builtin.assert:
         that:
           - "'Status: active' in ufw_status.stdout"
-          - "'22/tcp' in ufw_status.stdout or '22' in ufw_status.stdout"
+          - "expected_ssh_port ~ '/tcp' in ufw_status.stdout or expected_ssh_port in ufw_status.stdout"
         fail_msg: "ufw is not active or SSH allowance is missing."
