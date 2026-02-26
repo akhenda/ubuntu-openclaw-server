@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 export ANSIBLE_HOME := $(CURDIR)/.ansible
 
-.PHONY: deps galaxy lint test-docker test-vagrant run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage
+.PHONY: deps galaxy lint test-docker test-vagrant test-vagrant-integration run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage
 
 deps:
 	pip install -r requirements.txt
@@ -18,6 +18,9 @@ test-docker:
 
 test-vagrant:
 	@set -o pipefail; molecule test -s vagrant 2>&1 | grep -vE "WARNING  Driver .* does not provide a schema.|\\[WARNING\\]: Found variable using reserved name: connection"
+
+test-vagrant-integration:
+	@set -o pipefail; molecule test -s vagrant-integration 2>&1 | grep -vE "WARNING  Driver .* does not provide a schema.|\\[WARNING\\]: Found variable using reserved name: connection"
 
 run-prod:
 	ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/site.yml

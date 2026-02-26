@@ -4,8 +4,34 @@
   become: true
   gather_facts: true
   vars:
+    verify_ansible_host: ""
+    verify_ansible_port: ""
+    ansible_host: >-
+      {{
+        verify_ansible_host
+        if (verify_ansible_host | length > 0)
+        else hostvars[inventory_hostname].ansible_host
+      }}
+    ansible_port: >-
+      {{
+        verify_ansible_port
+        if (verify_ansible_port | length > 0)
+        else hostvars[inventory_hostname].ansible_port
+      }}
     expected_ssh_port: "{{ base_ssh_port | default('22') }}"
     legacy_ssh_port: "22"
+    verify_allow_legacy_ssh_port_effective: "{{ verify_allow_legacy_ssh_port | default(false) | bool }}"
+    verify_expect_legacy_ssh_deny_effective: "{{ verify_expect_legacy_ssh_deny | default(true) | bool }}"
+    verify_expect_socket_proxy_effective: "{{ verify_expect_socket_proxy | default(false) | bool }}"
+    verify_expect_traefik_proxy_endpoint_effective: "{{ verify_expect_traefik_proxy_endpoint | default(false) | bool }}"
+    verify_expect_homepage_proxy_endpoint_effective: "{{ verify_expect_homepage_proxy_endpoint | default(false) | bool }}"
+    verify_expect_oh_my_zsh_effective: "{{ verify_expect_oh_my_zsh | default(false) | bool }}"
+    verify_oh_my_zsh_user_effective: "{{ verify_oh_my_zsh_user | default(oh_my_zsh_target_user | default('')) }}"
+    verify_socket_proxy_endpoint_effective: >-
+      {{
+        verify_socket_proxy_endpoint
+        | default(socket_proxy_endpoint | default('http://docker-socket-proxy:2375'))
+      }}
   tasks:
     - name: Ensure sshd_config exists
       ansible.builtin.stat:
@@ -34,6 +60,7 @@
           - "(sshd_config_decoded | regex_search('(?m)^Port\\s+' ~ expected_ssh_port ~ '$')) is not none"
           - >-
             (expected_ssh_port == legacy_ssh_port) or
+            verify_allow_legacy_ssh_port_effective or
             ((sshd_config_decoded | regex_search('(?m)^Port\\s+' ~ legacy_ssh_port ~ '$')) is none)
         fail_msg: "sshd_config does not contain expected port/root/password hardening."
 
@@ -147,6 +174,7 @@
             ) > 0
           - >-
             (expected_ssh_port == legacy_ssh_port) or
+            (not verify_expect_legacy_ssh_deny_effective) or
             (
               (
                 ufw_status_lines
@@ -157,3 +185,113 @@
               ) > 0
             )
         fail_msg: "ufw is not active or SSH allow/deny rules are not as expected."
+
+    - name: Verify socket proxy container is running
+      community.docker.docker_container_info:
+        name: "{{ socket_proxy_container_name | default('docker-socket-proxy') }}"
+      register: verify_socket_proxy_container
+      when: verify_expect_socket_proxy_effective
+
+    - name: Assert socket proxy container health
+      ansible.builtin.assert:
+        that:
+          - verify_socket_proxy_container.exists
+          - verify_socket_proxy_container.container.State.Running | bool
+        fail_msg: "Socket proxy container is missing or not running."
+      when: verify_expect_socket_proxy_effective
+
+    - name: Read Traefik static configuration
+      ansible.builtin.slurp:
+        path: /opt/traefik/traefik.yml
+      register: verify_traefik_config
+      when: verify_expect_traefik_proxy_endpoint_effective
+
+    - name: Assert Traefik uses socket proxy endpoint
+      ansible.builtin.assert:
+        that:
+          - verify_socket_proxy_endpoint_effective in (verify_traefik_config.content | b64decode)
+        fail_msg: "Traefik config is not using socket proxy endpoint."
+      when: verify_expect_traefik_proxy_endpoint_effective
+
+    - name: Read Traefik compose stack
+      ansible.builtin.slurp:
+        path: /opt/traefik/docker-compose.yml
+      register: verify_traefik_compose
+      when: verify_expect_traefik_proxy_endpoint_effective
+
+    - name: Assert Traefik compose does not mount docker.sock directly
+      ansible.builtin.assert:
+        that:
+          - "'/var/run/docker.sock:/var/run/docker.sock:ro' not in (verify_traefik_compose.content | b64decode)"
+        fail_msg: "Traefik compose still mounts docker.sock directly."
+      when: verify_expect_traefik_proxy_endpoint_effective
+
+    - name: Read Homepage docker endpoint config
+      ansible.builtin.slurp:
+        path: /opt/homepage/config/docker.yaml
+      register: verify_homepage_docker_cfg
+      when: verify_expect_homepage_proxy_endpoint_effective
+
+    - name: Assert Homepage uses socket proxy endpoint
+      ansible.builtin.assert:
+        that:
+          - verify_socket_proxy_endpoint_effective in (verify_homepage_docker_cfg.content | b64decode)
+        fail_msg: "Homepage docker config is not using socket proxy endpoint."
+      when: verify_expect_homepage_proxy_endpoint_effective
+
+    - name: Read Homepage compose stack
+      ansible.builtin.slurp:
+        path: /opt/homepage/docker-compose.yml
+      register: verify_homepage_compose
+      when: verify_expect_homepage_proxy_endpoint_effective
+
+    - name: Assert Homepage compose does not mount docker.sock directly
+      ansible.builtin.assert:
+        that:
+          - "'/var/run/docker.sock:/var/run/docker.sock:ro' not in (verify_homepage_compose.content | b64decode)"
+        fail_msg: "Homepage compose still mounts docker.sock directly."
+      when: verify_expect_homepage_proxy_endpoint_effective
+
+    - name: Gather passwd entry for Oh My Zsh user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ verify_oh_my_zsh_user_effective }}"
+      when:
+        - verify_expect_oh_my_zsh_effective
+        - verify_oh_my_zsh_user_effective | length > 0
+
+    - name: Derive Oh My Zsh expected paths
+      ansible.builtin.set_fact:
+        verify_oh_my_zsh_home: "{{ ansible_facts.getent_passwd[verify_oh_my_zsh_user_effective][4] }}"
+        verify_oh_my_zsh_shell: "{{ ansible_facts.getent_passwd[verify_oh_my_zsh_user_effective][5] }}"
+      when:
+        - verify_expect_oh_my_zsh_effective
+        - verify_oh_my_zsh_user_effective | length > 0
+
+    - name: Check Oh My Zsh installation directory
+      ansible.builtin.stat:
+        path: "{{ verify_oh_my_zsh_home }}/.oh-my-zsh"
+      register: verify_ohmyzsh_dir_stat
+      when:
+        - verify_expect_oh_my_zsh_effective
+        - verify_oh_my_zsh_user_effective | length > 0
+
+    - name: Check Oh My Zsh rc file
+      ansible.builtin.stat:
+        path: "{{ verify_oh_my_zsh_home }}/.zshrc"
+      register: verify_ohmyzsh_rc_stat
+      when:
+        - verify_expect_oh_my_zsh_effective
+        - verify_oh_my_zsh_user_effective | length > 0
+
+    - name: Assert Oh My Zsh is configured for user
+      ansible.builtin.assert:
+        that:
+          - verify_oh_my_zsh_shell == "/bin/zsh"
+          - verify_ohmyzsh_dir_stat.stat.exists
+          - verify_ohmyzsh_dir_stat.stat.isdir
+          - verify_ohmyzsh_rc_stat.stat.exists
+        fail_msg: "Oh My Zsh is not configured as expected."
+      when:
+        - verify_expect_oh_my_zsh_effective
+        - verify_oh_my_zsh_user_effective | length > 0

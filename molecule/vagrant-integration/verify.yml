@@ -1,0 +1,3 @@
+---
+- name: Verify vagrant-integration scenario
+  import_playbook: ../vagrant/verify.yml

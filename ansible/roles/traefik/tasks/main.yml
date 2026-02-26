@@ -33,11 +33,40 @@
       ansible.builtin.apt:
         name:
           - docker.io
-          - docker-compose-plugin
           - python3-docker
         state: present
         update_cache: true
+        lock_timeout: 300
       when: traefik_install_docker | bool
+
+    - name: Try installing Docker Compose plugin package
+      ansible.builtin.apt:
+        name: docker-compose-plugin
+        state: present
+        lock_timeout: 300
+      register: traefik_compose_plugin_install
+      failed_when: false
+      when: traefik_install_docker | bool
+
+    - name: Install Docker Compose v2 fallback package when plugin is unavailable
+      ansible.builtin.apt:
+        name: docker-compose-v2
+        state: present
+        lock_timeout: 300
+      register: traefik_compose_v2_install
+      failed_when: false
+      when:
+        - traefik_install_docker | bool
+
+    - name: Install legacy Docker Compose package when v2 package is unavailable
+      ansible.builtin.apt:
+        name: docker-compose
+        state: present
+        lock_timeout: 300
+      when:
+        - traefik_install_docker | bool
+        - traefik_compose_v2_install is defined
+        - traefik_compose_v2_install is failed
 
     - name: Ensure docker service is enabled and running
       ansible.builtin.service:

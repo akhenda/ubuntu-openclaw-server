@@ -61,6 +61,7 @@ python -m venv .venv && source .venv/bin/activate
 make deps && make galaxy && make lint
 make test-docker
 make test-vagrant
+make test-vagrant-integration
 ```
 
 ## Production Run
@@ -362,5 +363,6 @@ ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/site.ym
 
 - `docker` scenario: quick base role checks on `ubuntu:24.04` container.
 - `vagrant` scenario: full `site.yml` (with `openclaw_enable=false`) on Ubuntu 24.04 VM.
+- `vagrant-integration` scenario: full `site.yml` with optional roles enabled (`socket_proxy`, `traefik`, `homepage`, `oh_my_zsh`) plus SSH/firewall policy checks (`1773` allowed, `22` denied).
 
 `openclaw_enable` defaults to `false` so Molecule runs are deterministic.
