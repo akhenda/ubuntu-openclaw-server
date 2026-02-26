@@ -1,0 +1,7 @@
+---
+- name: Apply Docker socket proxy role only
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: socket_proxy

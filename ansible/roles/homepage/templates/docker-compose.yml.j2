@@ -5,7 +5,9 @@ services:
     restart: "{{ homepage_restart_policy }}"
     volumes:
       - "{{ homepage_config_dir }}:/app/config"
+{% if not (homepage_use_socket_proxy | bool) %}
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+{% endif %}
     networks:
       - "{{ homepage_network_name }}"
     labels:

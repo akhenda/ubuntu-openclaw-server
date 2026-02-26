@@ -13,6 +13,13 @@ homepage_container_port: 3000
 homepage_domain: "{{ traefik_domain | default('') }}"
 homepage_host: "{{ ('hub.' ~ homepage_domain) if (homepage_domain | length > 0) else '' }}"
 homepage_network_name: "{{ traefik_network_name | default('proxy') }}"
+homepage_use_socket_proxy: "{{ socket_proxy_enable | default(false) | bool }}"
+homepage_docker_proxy_endpoint: >-
+  {{
+    (socket_proxy_endpoint | default('http://docker-socket-proxy:2375'))
+    if (homepage_use_socket_proxy | bool)
+    else 'unix:///var/run/docker.sock'
+  }}
 
 homepage_manage_default_config: true
 homepage_title: OpenClaw Hub

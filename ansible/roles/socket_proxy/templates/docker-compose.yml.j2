@@ -1,0 +1,25 @@
+services:
+  {{ socket_proxy_container_name }}:
+    image: "{{ socket_proxy_image }}"
+    container_name: "{{ socket_proxy_container_name }}"
+    restart: "{{ socket_proxy_restart_policy }}"
+    environment:
+{% for key, value in (socket_proxy_env_defaults | combine(socket_proxy_env_overrides, recursive=True)).items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    read_only: true
+    tmpfs:
+      - /run
+    networks:
+      - "{{ socket_proxy_network_name }}"
+{% if socket_proxy_publish_port | bool %}
+    ports:
+      - "{{ socket_proxy_bind_address }}:{{ socket_proxy_bind_port }}:2375"
+{% endif %}
+
+networks:
+  {{ socket_proxy_network_name }}:
+    external: true
+    name: "{{ socket_proxy_network_name }}"

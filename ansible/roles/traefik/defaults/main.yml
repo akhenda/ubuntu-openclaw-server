@@ -22,6 +22,13 @@ traefik_image: traefik:v2.11
 traefik_container_name: traefik
 traefik_network_name: proxy
 traefik_restart_policy: unless-stopped
+traefik_use_socket_proxy: "{{ socket_proxy_enable | default(false) | bool }}"
+traefik_docker_endpoint: >-
+  {{
+    (socket_proxy_endpoint | default('http://docker-socket-proxy:2375'))
+    if (traefik_use_socket_proxy | bool)
+    else 'unix:///var/run/docker.sock'
+  }}
 
 traefik_domain: ""
 traefik_dashboard_enable: false

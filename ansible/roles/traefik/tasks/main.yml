@@ -23,6 +23,12 @@
         fail_msg: "Set traefik_dashboard_host (or traefik_domain) when traefik_dashboard_enable=true."
       when: traefik_dashboard_enable | bool
 
+    - name: Validate Traefik Docker endpoint
+      ansible.builtin.assert:
+        that:
+          - traefik_docker_endpoint | length > 0
+        fail_msg: "Set traefik_docker_endpoint to a valid Docker API endpoint."
+
     - name: Install Docker packages required for Traefik stack
       ansible.builtin.apt:
         name:
@@ -161,6 +167,7 @@
       ansible.builtin.debug:
         msg:
           - "Traefik stack deployed at {{ traefik_stack_root }}."
+          - "Docker provider endpoint: {{ traefik_docker_endpoint }}"
           - "Dashboard enabled: {{ traefik_dashboard_enable | bool }}"
           - "Origin cert mode enabled: {{ traefik_use_origin_cert | bool }}"
           - "Firewall ports managed: {{ traefik_effective_manage_firewall | bool }}"

@@ -13,6 +13,12 @@
           - homepage_host | length > 0
         fail_msg: "Set homepage_host (or homepage_domain) when homepage_enable=true."
 
+    - name: Validate Homepage Docker endpoint
+      ansible.builtin.assert:
+        that:
+          - homepage_docker_proxy_endpoint | length > 0
+        fail_msg: "Set homepage_docker_proxy_endpoint to a valid Docker API endpoint."
+
     - name: Ensure docker service is running for Homepage deployment
       ansible.builtin.service:
         name: docker
@@ -106,7 +112,7 @@
         content: |
           ---
           my-docker:
-            host: unix:///var/run/docker.sock
+            host: {{ homepage_docker_proxy_endpoint | to_json }}
       when: homepage_manage_default_config | bool
 
     - name: Deploy Homepage stack via docker compose
@@ -133,4 +139,5 @@
       ansible.builtin.debug:
         msg:
           - "Homepage hub deployed at host: {{ homepage_host }}"
+          - "Homepage Docker endpoint: {{ homepage_docker_proxy_endpoint }}"
           - "Ensure DNS points {{ homepage_host }} to your Traefik entrypoint and Cloudflare Access policy protects it."

@@ -2,7 +2,7 @@
 
 Repeatable, idempotent infrastructure automation for **Ubuntu Server 24.04 LTS (noble)** using Ansible.
 
-This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, can deploy a Traefik reverse-proxy foundation, can deploy a Homepage hub service, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
+This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, can deploy a Docker socket proxy, can deploy a Traefik reverse-proxy foundation, can deploy a Homepage hub service, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
 
 ## What This Repo Does
 
@@ -21,16 +21,20 @@ This repository bootstraps a fresh host, applies a secure baseline, applies DevS
 - install Cloudflare Origin CA root cert on the server trust store
 - manage Cloudflare DNS records (token/global-key auth)
 - enforce Cloudflare SSL mode (for example `strict`)
-5. Optionally deploys Traefik foundation:
+5. Optionally deploys Docker socket proxy:
+- deploys `tecnativa/docker-socket-proxy` with restricted Docker API permissions
+- keeps Docker socket off Traefik/Homepage containers by default when enabled
+- publishes proxy port to host only if explicitly enabled
+6. Optionally deploys Traefik foundation:
 - install Docker engine + compose plugin
 - create shared `proxy` docker network
 - deploy Traefik stack on `80/443` with Docker provider `exposedByDefault=false`
 - optionally configure dashboard host and Cloudflare origin cert files
-6. Optionally deploys Homepage hub behind Traefik:
+7. Optionally deploys Homepage hub behind Traefik:
 - deploy Homepage stack at `/opt/homepage`
 - route `hub.<domain>` via Traefik labels on the container
-- mount docker socket read-only for service discovery widgets
-7. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
+- use socket proxy endpoint for Homepage Docker integration (or unix socket if socket proxy is disabled)
+8. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
 
 ## Controller Prerequisites
 
@@ -148,6 +152,38 @@ Cloudflare Access click-path (dashboard):
 - Keep default deny for everyone else.
 5. Save and test in an incognito browser to confirm authentication is enforced.
 
+## Docker Socket Proxy
+
+The `socket_proxy` role deploys a hardened Docker API proxy for other services that need Docker metadata access.
+
+Behavior:
+
+- deploys stack under `/opt/docker-socket-proxy`
+- runs `tecnativa/docker-socket-proxy`
+- defaults to no host port publishing (`socket_proxy_publish_port: false`)
+- exposes only a constrained set of Docker API endpoints (override with `socket_proxy_env_overrides`)
+
+Example:
+
+```yaml
+socket_proxy_enable: true
+socket_proxy_endpoint: "http://docker-socket-proxy:2375"
+socket_proxy_env_overrides:
+  CONTAINERS: "1"
+  IMAGES: "1"
+  INFO: "1"
+  NETWORKS: "1"
+  EVENTS: "1"
+```
+
+Run only socket proxy:
+
+```bash
+ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/socket_proxy.yml
+# or
+make run-socket-proxy
+```
+
 ## Traefik Foundation
 
 The `traefik` role is designed to prepare the VPS for an app-hub model (for example `hub.akhenda.net` and `*.akhenda.net`) without touching existing OpenClaw containers.
@@ -158,6 +194,7 @@ Behavior:
 - adds configured admin user to docker group
 - creates `proxy` network for shared reverse-proxy routing
 - deploys Traefik stack at `/opt/traefik`
+- uses `traefik_docker_endpoint` (socket proxy endpoint by default when enabled)
 - opens UFW `80/443` when firewall management is enabled in this repo
 - supports Cloudflare origin certificate via vars (`traefik_origin_cert_content`, `traefik_origin_key_content`) or pre-existing files under `/opt/traefik/certs`
 
@@ -190,7 +227,7 @@ Behavior:
 - deploys stack under `/opt/homepage`
 - uses docker network `proxy` (or your configured Traefik network)
 - adds Traefik labels for `Host(\`hub.<domain>\`)` on `websecure`
-- mounts `/var/run/docker.sock` read-only for Homepage Docker integration
+- uses `homepage_docker_proxy_endpoint` for Docker integration (socket proxy by default when enabled)
 
 Example:
 

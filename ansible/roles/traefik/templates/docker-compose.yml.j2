@@ -12,7 +12,9 @@ services:
       - "{{ traefik_stack_root }}/{{ traefik_config_filename }}:/etc/traefik/traefik.yml:ro"
       - "{{ traefik_dynamic_dir }}:/etc/traefik/dynamic:ro"
       - "{{ traefik_certs_dir }}:/etc/traefik/certs:ro"
+{% if not (traefik_use_socket_proxy | bool) %}
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+{% endif %}
     networks:
       - "{{ traefik_network_name }}"
     labels:

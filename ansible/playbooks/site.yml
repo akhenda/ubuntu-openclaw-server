@@ -14,6 +14,10 @@
       tags:
         - cloudflare
       when: cloudflare_enable | default(false) | bool
+    - role: socket_proxy
+      tags:
+        - socket_proxy
+      when: socket_proxy_enable | default(false) | bool
     - role: traefik
       tags:
         - traefik

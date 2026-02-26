@@ -18,7 +18,7 @@ entryPoints:
 
 providers:
   docker:
-    endpoint: "unix:///var/run/docker.sock"
+    endpoint: "{{ traefik_docker_endpoint }}"
     exposedByDefault: false
     network: "{{ traefik_network_name }}"
     watch: true
