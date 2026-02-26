@@ -1,0 +1,7 @@
+---
+- name: Apply Oh My Zsh role only
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: oh_my_zsh

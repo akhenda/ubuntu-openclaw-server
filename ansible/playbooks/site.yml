@@ -7,6 +7,11 @@
     - role: base
       tags:
         - base
+    - role: oh_my_zsh
+      tags:
+        - shell
+        - oh_my_zsh
+      when: oh_my_zsh_enable | default(false) | bool
     - role: hardening
       tags:
         - hardening

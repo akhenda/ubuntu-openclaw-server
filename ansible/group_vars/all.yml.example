@@ -26,6 +26,19 @@ base_fqdn: "{{ lookup('ansible.builtin.env', 'INFRA_FQDN') | default('', true) }
 base_host_ip: "{{ lookup('ansible.builtin.env', 'INFRA_HOST_IP') | default('', true) }}"
 base_configure_motd: true
 
+# Oh My Zsh role
+oh_my_zsh_enable: false
+oh_my_zsh_target_user: "{{ base_admin_user }}"
+oh_my_zsh_shell_path: /bin/zsh
+oh_my_zsh_theme_name: guru2
+oh_my_zsh_plugins:
+  - git
+oh_my_zsh_install_z: true
+
+# Example:
+# oh_my_zsh_enable: true
+# oh_my_zsh_target_user: "{{ base_admin_user }}"
+
 # Hardening role
 hardening_enable_devsec: true
 os_ignore_users:

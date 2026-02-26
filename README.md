@@ -2,7 +2,7 @@
 
 Repeatable, idempotent infrastructure automation for **Ubuntu Server 24.04 LTS (noble)** using Ansible.
 
-This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, can deploy a Docker socket proxy, can deploy a Traefik reverse-proxy foundation, can deploy a Homepage hub service, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
+This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, can configure Oh My Zsh for your admin user, can deploy a Docker socket proxy, can deploy a Traefik reverse-proxy foundation, can deploy a Homepage hub service, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
 
 ## What This Repo Does
 
@@ -21,20 +21,25 @@ This repository bootstraps a fresh host, applies a secure baseline, applies DevS
 - install Cloudflare Origin CA root cert on the server trust store
 - manage Cloudflare DNS records (token/global-key auth)
 - enforce Cloudflare SSL mode (for example `strict`)
-5. Optionally deploys Docker socket proxy:
+5. Optionally configures Oh My Zsh for the admin user:
+- installs `zsh` and Oh My Zsh
+- installs `guru2` theme
+- enables `git` plugin
+- sets `zsh` as default shell
+6. Optionally deploys Docker socket proxy:
 - deploys `tecnativa/docker-socket-proxy` with restricted Docker API permissions
 - keeps Docker socket off Traefik/Homepage containers by default when enabled
 - publishes proxy port to host only if explicitly enabled
-6. Optionally deploys Traefik foundation:
+7. Optionally deploys Traefik foundation:
 - install Docker engine + compose plugin
 - create shared `proxy` docker network
 - deploy Traefik stack on `80/443` with Docker provider `exposedByDefault=false`
 - optionally configure dashboard host and Cloudflare origin cert files
-7. Optionally deploys Homepage hub behind Traefik:
+8. Optionally deploys Homepage hub behind Traefik:
 - deploy Homepage stack at `/opt/homepage`
 - route `hub.<domain>` via Traefik labels on the container
 - use socket proxy endpoint for Homepage Docker integration (or unix socket if socket proxy is disabled)
-8. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
+9. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
 
 ## Controller Prerequisites
 
@@ -96,6 +101,37 @@ Example:
 ```bash
 export INFRA_ADMIN_USER=openclaw
 export INFRA_ADMIN_SSH_PUBLIC_KEY=\"ssh-ed25519 AAAA...you@example\"
+```
+
+## Oh My Zsh
+
+The `oh_my_zsh` role configures a consistent shell environment for your admin user.
+
+Behavior:
+
+- installs `zsh`
+- clones Oh My Zsh
+- installs the `guru2` theme
+- installs `z.sh` helper (optional)
+- renders `.zshrc` with `git` plugin
+- sets `/bin/zsh` as default shell
+
+Example:
+
+```yaml
+oh_my_zsh_enable: true
+oh_my_zsh_target_user: "{{ base_admin_user }}"
+oh_my_zsh_theme_name: guru2
+oh_my_zsh_plugins:
+  - git
+```
+
+Run only shell setup:
+
+```bash
+ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/oh_my_zsh.yml
+# or
+make run-shell
 ```
 
 ## Cloudflare Setup (Traefik-Friendly)

@@ -1,0 +1,72 @@
+---
+- name: Skip Oh My Zsh setup when disabled
+  ansible.builtin.debug:
+    msg: "oh_my_zsh_enable is false; skipping Oh My Zsh setup."
+  when: not (oh_my_zsh_enable | bool)
+
+- name: Configure Oh My Zsh for target user
+  when: oh_my_zsh_enable | bool
+  block:
+    - name: Gather passwd entry for target user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ oh_my_zsh_target_user }}"
+
+    - name: Derive Oh My Zsh paths
+      ansible.builtin.set_fact:
+        oh_my_zsh_target_home: "{{ ansible_facts.getent_passwd[oh_my_zsh_target_user][4] }}"
+        oh_my_zsh_install_dir: "{{ ansible_facts.getent_passwd[oh_my_zsh_target_user][4] }}/.oh-my-zsh"
+
+    - name: Install zsh
+      ansible.builtin.apt:
+        name: zsh
+        state: present
+        update_cache: true
+
+    - name: Clone Oh My Zsh
+      ansible.builtin.git:
+        repo: "{{ oh_my_zsh_repo }}"
+        dest: "{{ oh_my_zsh_install_dir }}"
+        version: "{{ oh_my_zsh_repo_version }}"
+        update: true
+      become: true
+      become_user: "{{ oh_my_zsh_target_user }}"
+      environment:
+        HOME: "{{ oh_my_zsh_target_home }}"
+
+    - name: Install guru2 theme
+      ansible.builtin.get_url:
+        url: "{{ oh_my_zsh_theme_url }}"
+        dest: "{{ oh_my_zsh_install_dir }}/themes/{{ oh_my_zsh_theme_name }}.zsh-theme"
+        owner: "{{ oh_my_zsh_target_user }}"
+        group: "{{ oh_my_zsh_target_user }}"
+        mode: "0644"
+
+    - name: Install z.sh helper script
+      ansible.builtin.get_url:
+        url: "{{ oh_my_zsh_z_url }}"
+        dest: "{{ oh_my_zsh_target_home }}/z.sh"
+        owner: "{{ oh_my_zsh_target_user }}"
+        group: "{{ oh_my_zsh_target_user }}"
+        mode: "0644"
+      when: oh_my_zsh_install_z | bool
+
+    - name: Render .zshrc
+      ansible.builtin.template:
+        src: zshrc.j2
+        dest: "{{ oh_my_zsh_target_home }}/.zshrc"
+        owner: "{{ oh_my_zsh_target_user }}"
+        group: "{{ oh_my_zsh_target_user }}"
+        mode: "0644"
+
+    - name: Set zsh as default shell for target user
+      ansible.builtin.user:
+        name: "{{ oh_my_zsh_target_user }}"
+        shell: "{{ oh_my_zsh_shell_path }}"
+
+    - name: Print Oh My Zsh setup summary
+      ansible.builtin.debug:
+        msg:
+          - "Oh My Zsh installed for user: {{ oh_my_zsh_target_user }}"
+          - "Theme: {{ oh_my_zsh_theme_name }}"
+          - "Plugins: {{ oh_my_zsh_plugins | join(', ') }}"
