@@ -1,0 +1,40 @@
+---
+# Copy to ansible/group_vars/all.yml (gitignored) and customize.
+
+# Base role
+base_timezone: Africa/Nairobi
+base_manage_firewall: true
+base_install_fail2ban: true
+base_enable_unattended_upgrades: true
+base_apt_upgrade: dist
+base_unattended_auto_reboot: false
+base_set_timezone: true
+base_allowed_ssh_ports:
+  - "22"
+
+# Hardening role
+hardening_enable_devsec: true
+os_ignore_users:
+  - ubuntu
+
+ssh_server_password_login: false
+ssh_permit_root_login: "no"
+ssh_use_dns: false
+ssh_max_auth_retries: 2
+ssh_allow_tcp_forwarding: "no"
+ssh_x11_forwarding: false
+ssh_print_motd: false
+ssh_print_last_log: false
+ssh_print_debian_banner: false
+
+# OpenClaw role
+openclaw_enable: false
+openclaw_install_mode: release
+openclaw_repo_ref: main
+openclaw_target_dir: /opt/openclaw-ansible
+tailscale_authkey: ""
+
+# Bootstrap playbook optional values
+bootstrap_admin_user: ""
+bootstrap_admin_ssh_public_key: ""
+bootstrap_admin_groups: sudo

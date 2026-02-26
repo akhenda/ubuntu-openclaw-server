@@ -1,0 +1,20 @@
+---
+dependency:
+  name: galaxy
+
+driver:
+  name: docker
+
+platforms:
+  - name: default-placeholder
+    image: ubuntu:24.04
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+
+scenario:
+  test_sequence: []
+
+verifier:
+  name: ansible

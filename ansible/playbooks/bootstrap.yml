@@ -1,0 +1,41 @@
+---
+- name: Bootstrap Ubuntu host for Ansible management
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    bootstrap_admin_user: ""
+    bootstrap_admin_ssh_public_key: ""
+    bootstrap_admin_groups: sudo
+  tasks:
+    - name: Ensure python3 is present
+      ansible.builtin.raw: |
+        test -x /usr/bin/python3 || (apt-get update -y && apt-get install -y python3)
+      changed_when: false
+
+    - name: Ensure sudo is present
+      ansible.builtin.raw: |
+        test -x /usr/bin/sudo || (apt-get update -y && apt-get install -y sudo)
+      changed_when: false
+
+    - name: Gather facts after bootstrap prerequisites
+      ansible.builtin.setup:
+
+    - name: Ensure bootstrap admin user exists when requested
+      ansible.builtin.user:
+        name: "{{ bootstrap_admin_user }}"
+        groups: "{{ bootstrap_admin_groups }}"
+        append: true
+        shell: /bin/bash
+        create_home: true
+        password_lock: true
+      when: bootstrap_admin_user | length > 0
+
+    - name: Ensure bootstrap admin authorized key when requested
+      ansible.posix.authorized_key:
+        user: "{{ bootstrap_admin_user }}"
+        key: "{{ bootstrap_admin_ssh_public_key }}"
+        state: present
+      when:
+        - bootstrap_admin_user | length > 0
+        - bootstrap_admin_ssh_public_key | length > 0

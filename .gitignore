@@ -1,0 +1,8 @@
+.venv/
+.ansible/
+__pycache__/
+*.pyc
+.molecule/
+.vagrant/
+*.retry
+ansible/group_vars/all.yml

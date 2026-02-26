@@ -1,0 +1,30 @@
+name: CI
+
+"on":
+  push:
+  pull_request:
+
+jobs:
+  lint-and-docker-molecule:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Run ansible-lint
+        run: ansible-lint
+
+      - name: Run docker molecule scenario
+        run: molecule test -s docker

@@ -1,0 +1,94 @@
+---
+- name: Derive effective firewall management mode
+  ansible.builtin.set_fact:
+    base_effective_manage_firewall: "{{ base_manage_firewall and not (openclaw_enable | default(false) | bool) }}"
+
+- name: Refresh apt cache and apply distro upgrades
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: "{{ base_apt_upgrade }}"
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - ufw
+      - unattended-upgrades
+    state: present
+
+- name: Install fail2ban package when enabled
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+  when: base_install_fail2ban | bool
+
+- name: Set system timezone
+  community.general.timezone:
+    name: "{{ base_timezone }}"
+  when: base_set_timezone | bool
+
+- name: Configure unattended-upgrades behavior
+  ansible.builtin.template:
+    src: unattended-upgrades-50unattended.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  when: base_enable_unattended_upgrades | bool
+
+- name: Ensure unattended-upgrades periodic execution is enabled
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+  when: base_enable_unattended_upgrades | bool
+
+- name: Configure fail2ban jail.local for sshd
+  ansible.builtin.template:
+    src: fail2ban-jail-local.conf.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  when: base_install_fail2ban | bool
+  notify: Restart fail2ban
+
+- name: Ensure fail2ban service is enabled and running
+  ansible.builtin.service:
+    name: fail2ban
+    enabled: true
+    state: started
+  when:
+    - base_install_fail2ban | bool
+    - ansible_service_mgr == "systemd"
+
+- name: Configure ufw defaults and SSH rules
+  when: base_effective_manage_firewall | bool
+  block:
+    - name: Set ufw default incoming policy to deny
+      community.general.ufw:
+        direction: incoming
+        policy: deny
+
+    - name: Set ufw default outgoing policy to allow
+      community.general.ufw:
+        direction: outgoing
+        policy: allow
+
+    - name: Allow SSH ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: "{{ base_allowed_ssh_ports }}"
+
+    - name: Enable ufw
+      community.general.ufw:
+        state: enabled

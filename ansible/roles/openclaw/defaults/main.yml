@@ -1,0 +1,6 @@
+---
+openclaw_enable: false
+openclaw_install_mode: release
+openclaw_repo_ref: main
+openclaw_target_dir: /opt/openclaw-ansible
+tailscale_authkey: ""  # noqa: var-naming[no-role-prefix]

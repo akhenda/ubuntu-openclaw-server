@@ -1,0 +1,16 @@
+---
+- name: Apply baseline, hardening, and optional OpenClaw install
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: base
+      tags:
+        - base
+    - role: hardening
+      tags:
+        - hardening
+    - role: openclaw
+      tags:
+        - openclaw
+      when: openclaw_enable | default(false) | bool

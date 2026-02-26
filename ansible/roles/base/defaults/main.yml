@@ -1,0 +1,10 @@
+---
+base_timezone: Africa/Nairobi
+base_manage_firewall: true
+base_install_fail2ban: true
+base_enable_unattended_upgrades: true
+base_apt_upgrade: dist
+base_unattended_auto_reboot: false
+base_set_timezone: true
+base_allowed_ssh_ports:
+  - "22"

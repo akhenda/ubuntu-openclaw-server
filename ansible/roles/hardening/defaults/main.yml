@@ -1,0 +1,15 @@
+---
+hardening_enable_devsec: true
+
+os_ignore_users:  # noqa: var-naming[no-role-prefix]
+  - ubuntu
+
+ssh_server_password_login: false  # noqa: var-naming[no-role-prefix]
+ssh_permit_root_login: "no"  # noqa: var-naming[no-role-prefix]
+ssh_use_dns: false  # noqa: var-naming[no-role-prefix]
+ssh_max_auth_retries: 2  # noqa: var-naming[no-role-prefix]
+ssh_allow_tcp_forwarding: "no"  # noqa: var-naming[no-role-prefix]
+ssh_x11_forwarding: false  # noqa: var-naming[no-role-prefix]
+ssh_print_motd: false  # noqa: var-naming[no-role-prefix]
+ssh_print_last_log: false  # noqa: var-naming[no-role-prefix]
+ssh_print_debian_banner: false  # noqa: var-naming[no-role-prefix]

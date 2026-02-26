@@ -1,0 +1,16 @@
+---
+- name: Verify docker scenario
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Gather installed package facts
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Assert ufw and unattended-upgrades packages are installed
+      ansible.builtin.assert:
+        that:
+          - "'ufw' in ansible_facts.packages"
+          - "'unattended-upgrades' in ansible_facts.packages"
+        fail_msg: "Expected ufw and unattended-upgrades packages to be installed."
+        success_msg: "Required baseline packages are installed."

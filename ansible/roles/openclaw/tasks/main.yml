@@ -1,0 +1,60 @@
+---
+- name: Skip OpenClaw installation when disabled
+  ansible.builtin.debug:
+    msg: "openclaw_enable is false; skipping OpenClaw installation."
+  when: not (openclaw_enable | bool)
+
+- name: Install and run OpenClaw installer locally on target
+  when: openclaw_enable | bool
+  block:
+    - name: Install OpenClaw role prerequisites
+      ansible.builtin.apt:
+        name:
+          - git
+          - ansible-core
+        state: present
+        update_cache: true
+
+    - name: Clone openclaw/openclaw-ansible
+      ansible.builtin.git:
+        repo: https://github.com/openclaw/openclaw-ansible.git
+        dest: "{{ openclaw_target_dir }}"
+        version: "{{ openclaw_repo_ref }}"
+        update: true
+
+    - name: Render OpenClaw vars file
+      ansible.builtin.template:
+        src: openclaw-vars.yml.j2
+        dest: "{{ openclaw_target_dir }}/openclaw-vars.yml"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Install OpenClaw Ansible collections on target
+      ansible.builtin.command:
+        argv:
+          - ansible-galaxy
+          - collection
+          - install
+          - -r
+          - requirements.yml
+      args:
+        chdir: "{{ openclaw_target_dir }}"
+      changed_when: false
+
+    - name: Run OpenClaw installer playbook on target
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - playbook.yml
+          - -e
+          - "@openclaw-vars.yml"
+      args:
+        chdir: "{{ openclaw_target_dir }}"
+      changed_when: false
+
+    - name: Print post-install OpenClaw next steps
+      ansible.builtin.debug:
+        msg:
+          - "OpenClaw install finished."
+          - "Next: connect to host and run openclaw configure, provider login steps, and optional openclaw onboard."

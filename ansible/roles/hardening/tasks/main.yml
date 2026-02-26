@@ -1,0 +1,10 @@
+---
+- name: Apply DevSec OS hardening role
+  ansible.builtin.include_role:
+    name: devsec.hardening.os_hardening
+  when: hardening_enable_devsec | bool
+
+- name: Apply DevSec SSH hardening role
+  ansible.builtin.include_role:
+    name: devsec.hardening.ssh_hardening
+  when: hardening_enable_devsec | bool

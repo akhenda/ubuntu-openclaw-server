@@ -1,0 +1,48 @@
+---
+- name: Verify vagrant scenario
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Ensure sshd_config exists
+      ansible.builtin.stat:
+        path: /etc/ssh/sshd_config
+      register: sshd_config
+
+    - name: Assert sshd_config exists
+      ansible.builtin.assert:
+        that:
+          - sshd_config.stat.exists
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert fail2ban is enabled/running under systemd
+      ansible.builtin.assert:
+        that:
+          - "ansible_facts.services['fail2ban.service'] is defined"
+          - "ansible_facts.services['fail2ban.service'].state == 'running'"
+        fail_msg: "fail2ban service is not running as expected."
+      when: ansible_service_mgr == "systemd"
+
+    - name: Assert unattended-upgrades service exists under systemd
+      ansible.builtin.assert:
+        that:
+          - "ansible_facts.services['unattended-upgrades.service'] is defined"
+        fail_msg: "unattended-upgrades service is missing."
+      when: ansible_service_mgr == "systemd"
+
+    - name: Check ufw status
+      ansible.builtin.command:
+        argv:
+          - ufw
+          - status
+      changed_when: false
+      register: ufw_status
+
+    - name: Assert ufw is active and SSH is allowed
+      ansible.builtin.assert:
+        that:
+          - "'Status: active' in ufw_status.stdout"
+          - "'22/tcp' in ufw_status.stdout or '22' in ufw_status.stdout"
+        fail_msg: "ufw is not active or SSH allowance is missing."

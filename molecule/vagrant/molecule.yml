@@ -1,0 +1,40 @@
+---
+dependency:
+  name: galaxy
+
+driver:
+  name: vagrant
+
+platforms:
+  - name: ubuntu2404-vagrant
+    box: hashicorp-education/ubuntu-24-04
+    provider_name: virtualbox
+    provider_options:
+      memory: 2048
+      cpus: 2
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/ansible/roles
+    ANSIBLE_COLLECTIONS_PATH: ${HOME}/.ansible/collections:/usr/share/ansible/collections
+    ANSIBLE_LIBRARY: ${MOLECULE_PROJECT_DIRECTORY}/molecule/vagrant/library
+  inventory:
+    group_vars:
+      all:
+        base_apt_upgrade: "no"
+        openclaw_enable: false
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - converge
+    - verify
+    - destroy
+
+verifier:
+  name: ansible
