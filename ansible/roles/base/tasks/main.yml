@@ -2,6 +2,12 @@
 - name: Derive effective firewall management mode
   ansible.builtin.set_fact:
     base_effective_manage_firewall: "{{ base_manage_firewall and not (openclaw_enable | default(false) | bool) }}"
+    base_effective_host_ip: >-
+      {{
+        (base_host_ip | trim)
+        if (base_host_ip | default('') | trim | length > 0)
+        else (ansible_default_ipv4.address | default('127.0.0.1', true))
+      }}
 
 - name: Refresh apt cache and apply distro upgrades
   ansible.builtin.apt:
@@ -101,6 +107,35 @@
   community.general.timezone:
     name: "{{ base_timezone }}"
   when: base_set_timezone | bool
+
+- name: Set hostname from configuration
+  ansible.builtin.hostname:
+    name: "{{ base_fqdn }}"
+  when: base_fqdn | length > 0
+
+- name: Ensure hostname mapping exists in /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    insertafter: "^127\\.0\\.0\\.1\\slocalhost"
+    line: "{{ base_effective_host_ip }} {{ base_fqdn }} {{ base_fqdn.split('.')[0] }}"
+    state: present
+  when: base_fqdn | length > 0
+
+- name: Remove default 127.0.1.1 hosts entry
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: "^127\\.0\\.1\\.1"
+    state: absent
+  when: base_fqdn | length > 0
+
+- name: Install custom MOTD status script
+  ansible.builtin.template:
+    src: motd-99-openclaw-status.j2
+    dest: /etc/update-motd.d/99-openclaw-status
+    owner: root
+    group: root
+    mode: "0755"
+  when: base_configure_motd | bool
 
 - name: Configure unattended-upgrades behavior
   ansible.builtin.template:

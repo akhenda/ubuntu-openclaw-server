@@ -28,6 +28,8 @@ provisioner:
           - "22"
         base_manage_admin_user: false
         base_remove_ubuntu_user: false
+        base_fqdn: "molecule.local"
+        base_configure_motd: true
         ssh_server_ports:
           - "22"
         ssh_client_port: "22"

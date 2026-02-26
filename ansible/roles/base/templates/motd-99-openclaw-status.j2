@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+set +e
+
+host_fqdn="$(hostname -f 2>/dev/null || hostname)"
+os_name="$(. /etc/os-release 2>/dev/null; echo ${PRETTY_NAME:-Unknown})"
+kernel="$(uname -r)"
+uptime_human="$(uptime -p 2>/dev/null || uptime)"
+public_ip="$(curl -4fsS --max-time 2 https://api.ipify.org 2>/dev/null || echo unavailable)"
+
+ram_line="$(free -h 2>/dev/null | awk '/^Mem:/ {print $3" / "$2" ("$7" free)"}')"
+if [ -z "$ram_line" ]; then
+  ram_line="unavailable"
+fi
+
+disk_line="$(df -h / 2>/dev/null | awk 'NR==2 {print $3" / "$2" ("$5" used)"}')"
+if [ -z "$disk_line" ]; then
+  disk_line="unavailable"
+fi
+
+fail2ban_state="inactive"
+fail2ban_jails="none"
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet fail2ban; then
+  fail2ban_state="active"
+  fail2ban_jails="$(fail2ban-client status 2>/dev/null | awk -F: '/Jail list/ {gsub(/^[ \t]+/, "", $2); print $2}')"
+  if [ -z "$fail2ban_jails" ]; then
+    fail2ban_jails="none"
+  fi
+fi
+
+docker_state="not-installed"
+docker_containers="none"
+if command -v docker >/dev/null 2>&1; then
+  docker_state="inactive"
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet docker; then
+    docker_state="active"
+  fi
+  docker_containers="$(docker ps --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null | paste -sd ', ' -)"
+  if [ -z "$docker_containers" ]; then
+    docker_containers="none"
+  fi
+fi
+
+openclaw_state="not-detected"
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q '^openclaw\.service'; then
+  if systemctl is-active --quiet openclaw; then
+    openclaw_state="systemd:active"
+  else
+    openclaw_state="systemd:inactive"
+  fi
+elif command -v docker >/dev/null 2>&1 && docker ps --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null | grep -qi openclaw; then
+  openclaw_state="container:running"
+fi
+
+cat <<MOTD
+
+==================== OpenClaw Host Status ====================
+Host         : ${host_fqdn}
+Host IP      : {{ base_effective_host_ip }}
+OS/Kernel    : ${os_name} | ${kernel}
+Uptime       : ${uptime_human}
+Public IP    : ${public_ip}
+RAM          : ${ram_line}
+Disk (/)     : ${disk_line}
+
+Docker       : ${docker_state}
+Containers   : ${docker_containers}
+OpenClaw     : ${openclaw_state}
+Fail2ban     : ${fail2ban_state} (jails: ${fail2ban_jails})
+
+Security     : SSH key-only, root login disabled, password auth disabled
+SSH Port     : {{ base_ssh_port }}
+Firewall     : UFW managed with restrictive defaults
+
+Notices      :
+- Rotate SSH keys and Vault secrets regularly.
+- Validate OpenClaw providers after deployment.
+- Review fail2ban and system logs after bootstrap.
+==============================================================
+
+MOTD

@@ -19,3 +19,7 @@ base_admin_password_hash: "{{ lookup('ansible.builtin.env', 'INFRA_ADMIN_PASSWOR
 base_admin_ssh_public_key: "{{ lookup('ansible.builtin.env', 'INFRA_ADMIN_SSH_PUBLIC_KEY') | default('', true) }}"
 base_admin_ssh_public_keys: []
 base_admin_groups: sudo
+
+base_fqdn: "{{ lookup('ansible.builtin.env', 'INFRA_FQDN') | default('', true) }}"
+base_host_ip: "{{ lookup('ansible.builtin.env', 'INFRA_HOST_IP') | default('', true) }}"
+base_configure_motd: true

@@ -12,6 +12,8 @@ This repository bootstraps a fresh host, applies a secure baseline, applies DevS
 - UFW firewall baseline (default deny incoming, allow outgoing, allow SSH)
 - unattended security updates
 - fail2ban for SSH
+- hostname management from config/env
+- custom MOTD with OpenClaw and system status summary
 3. Applies OS + SSH hardening using `devsec.hardening` collection roles:
 - `devsec.hardening.os_hardening`
 - `devsec.hardening.ssh_hardening`
@@ -69,6 +71,8 @@ Environment variables supported by defaults:
 - `INFRA_ADMIN_SSH_PUBLIC_KEY`
 - `INFRA_ADMIN_PASSWORD` (optional)
 - `INFRA_ADMIN_PASSWORD_HASH` (optional, preferred over plain password)
+- `INFRA_FQDN` (optional; if set, hostname + hosts mapping are managed)
+- `INFRA_HOST_IP` (optional; override detected primary host IP for `/etc/hosts` + MOTD)
 
 Example:
 

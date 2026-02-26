@@ -29,6 +29,72 @@
           - "'Port ' ~ expected_ssh_port in (sshd_config_content.content | b64decode)"
         fail_msg: "sshd_config does not contain expected port/root/password hardening."
 
+    - name: Check static hostname
+      ansible.builtin.command:
+        argv:
+          - hostnamectl
+          - --static
+      changed_when: false
+      register: hostnamectl_static
+
+    - name: Assert hostname is configured from base_fqdn
+      ansible.builtin.assert:
+        that:
+          - (hostnamectl_static.stdout | trim) in [base_fqdn, base_fqdn.split('.')[0]]
+        fail_msg: "Expected hostname to match base_fqdn (short or full form)."
+      when: base_fqdn | length > 0
+
+    - name: Read /etc/hosts
+      ansible.builtin.slurp:
+        path: /etc/hosts
+      register: hosts_file_content
+      when: base_fqdn | length > 0
+
+    - name: Determine expected host mapping IP
+      ansible.builtin.set_fact:
+        expected_host_mapping_ip: >-
+          {{
+            (base_host_ip | default('') | trim)
+            if (base_host_ip | default('') | trim | length > 0)
+            else (ansible_default_ipv4.address | default('127.0.0.1', true))
+          }}
+      when: base_fqdn | length > 0
+
+    - name: Assert /etc/hosts contains configured host mapping
+      ansible.builtin.assert:
+        that:
+          - "'%s %s %s' | format(expected_host_mapping_ip, base_fqdn, base_fqdn.split('.')[0]) in (hosts_file_content.content | b64decode)"
+        fail_msg: "Expected /etc/hosts to contain configured host IP and hostname mapping."
+      when: base_fqdn | length > 0
+
+    - name: Ensure custom MOTD script exists and is executable
+      ansible.builtin.stat:
+        path: /etc/update-motd.d/99-openclaw-status
+      register: motd_script
+
+    - name: Assert custom MOTD script exists and executable
+      ansible.builtin.assert:
+        that:
+          - motd_script.stat.exists
+          - motd_script.stat.executable
+      when: base_configure_motd | bool
+
+    - name: Run custom MOTD script
+      ansible.builtin.command:
+        argv:
+          - /etc/update-motd.d/99-openclaw-status
+      changed_when: false
+      register: motd_output
+      when: base_configure_motd | bool
+
+    - name: Assert custom MOTD output contains key sections
+      ansible.builtin.assert:
+        that:
+          - "'OpenClaw Host Status' in motd_output.stdout"
+          - "'Fail2ban' in motd_output.stdout"
+          - "'Docker' in motd_output.stdout"
+      when: base_configure_motd | bool
+
     - name: Gather service facts
       ansible.builtin.service_facts:
 
