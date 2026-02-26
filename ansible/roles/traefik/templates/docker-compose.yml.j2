@@ -1,0 +1,30 @@
+services:
+  traefik:
+    image: "{{ traefik_image }}"
+    container_name: "{{ traefik_container_name }}"
+    restart: "{{ traefik_restart_policy }}"
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "{{ traefik_stack_root }}/{{ traefik_config_filename }}:/etc/traefik/traefik.yml:ro"
+      - "{{ traefik_dynamic_dir }}:/etc/traefik/dynamic:ro"
+      - "{{ traefik_certs_dir }}:/etc/traefik/certs:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - "{{ traefik_network_name }}"
+    labels:
+      - "traefik.enable={{ 'true' if traefik_dashboard_enable | bool else 'false' }}"
+{% if traefik_dashboard_enable | bool %}
+      - "traefik.http.routers.traefik.rule=Host(`{{ traefik_dashboard_host }}`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls=true"
+      - "traefik.http.routers.traefik.service=api@internal"
+{% endif %}
+
+networks:
+  {{ traefik_network_name }}:
+    external: true
+    name: "{{ traefik_network_name }}"

@@ -1,0 +1,12 @@
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
+{% if traefik_use_origin_cert | bool %}
+  stores:
+    default:
+      defaultCertificate:
+        certFile: "/etc/traefik/certs/{{ traefik_origin_cert_filename }}"
+        keyFile: "/etc/traefik/certs/{{ traefik_origin_key_filename }}"
+{% endif %}

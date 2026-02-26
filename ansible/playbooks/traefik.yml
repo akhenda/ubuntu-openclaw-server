@@ -1,0 +1,7 @@
+---
+- name: Apply Traefik role only
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: traefik

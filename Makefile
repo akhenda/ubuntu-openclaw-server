@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 export ANSIBLE_HOME := $(CURDIR)/.ansible
 
-.PHONY: deps galaxy lint test-docker test-vagrant run-prod run-vagrant
+.PHONY: deps galaxy lint test-docker test-vagrant run-prod run-vagrant run-traefik
 
 deps:
 	pip install -r requirements.txt
@@ -24,3 +24,6 @@ run-prod:
 
 run-vagrant:
 	ansible-playbook -i ansible/inventories/vagrant/hosts.ini ansible/playbooks/site.yml
+
+run-traefik:
+	ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/traefik.yml

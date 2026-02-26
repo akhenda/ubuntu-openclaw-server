@@ -78,6 +78,37 @@ cloudflare_dns_records: []
 #     value: hub.akhenda.net
 #     proxied: true
 
+# Traefik role
+traefik_enable: false
+traefik_install_docker: true
+traefik_manage_user_group: true
+traefik_admin_user: "{{ base_admin_user }}"
+traefik_manage_firewall_rules: true
+traefik_firewall_ports:
+  - "80"
+  - "443"
+
+traefik_stack_root: /opt/traefik
+traefik_image: traefik:v2.11
+traefik_network_name: proxy
+
+traefik_domain: ""
+traefik_dashboard_enable: false
+traefik_dashboard_host: "{{ ('traefik.' ~ traefik_domain) if (traefik_domain | length > 0) else '' }}"
+
+traefik_use_origin_cert: false
+traefik_origin_cert_content: ""
+traefik_origin_key_content: ""
+
+# Example for akhenda.net hub workflow:
+# traefik_enable: true
+# traefik_domain: akhenda.net
+# traefik_dashboard_enable: true
+# traefik_dashboard_host: traefik.akhenda.net
+# traefik_use_origin_cert: true
+# traefik_origin_cert_content: "{{ vault_traefik_origin_cert }}"
+# traefik_origin_key_content: "{{ vault_traefik_origin_key }}"
+
 # OpenClaw role
 openclaw_enable: false
 openclaw_install_mode: release

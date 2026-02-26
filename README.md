@@ -2,7 +2,7 @@
 
 Repeatable, idempotent infrastructure automation for **Ubuntu Server 24.04 LTS (noble)** using Ansible.
 
-This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
+This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, can deploy a Traefik reverse-proxy foundation, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
 
 ## What This Repo Does
 
@@ -21,7 +21,12 @@ This repository bootstraps a fresh host, applies a secure baseline, applies DevS
 - install Cloudflare Origin CA root cert on the server trust store
 - manage Cloudflare DNS records (token/global-key auth)
 - enforce Cloudflare SSL mode (for example `strict`)
-5. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
+5. Optionally deploys Traefik foundation:
+- install Docker engine + compose plugin
+- create shared `proxy` docker network
+- deploy Traefik stack on `80/443` with Docker provider `exposedByDefault=false`
+- optionally configure dashboard host and Cloudflare origin cert files
+6. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
 
 ## Controller Prerequisites
 
@@ -128,6 +133,39 @@ cloudflare_dns_records:
 ```
 
 Cloudflare Access policy setup (`*.akhenda.net` allowlist by email) remains a manual dashboard step and should be applied after DNS/SSL are in place.
+
+## Traefik Foundation
+
+The `traefik` role is designed to prepare the VPS for an app-hub model (for example `hub.akhenda.net` and `*.akhenda.net`) without touching existing OpenClaw containers.
+
+Behavior:
+
+- installs Docker + compose plugin and ensures docker service is running
+- adds configured admin user to docker group
+- creates `proxy` network for shared reverse-proxy routing
+- deploys Traefik stack at `/opt/traefik`
+- opens UFW `80/443` when firewall management is enabled in this repo
+- supports Cloudflare origin certificate via vars (`traefik_origin_cert_content`, `traefik_origin_key_content`) or pre-existing files under `/opt/traefik/certs`
+
+Example:
+
+```yaml
+traefik_enable: true
+traefik_domain: akhenda.net
+traefik_dashboard_enable: true
+traefik_dashboard_host: traefik.akhenda.net
+traefik_use_origin_cert: true
+traefik_origin_cert_content: "{{ vault_traefik_origin_cert }}"
+traefik_origin_key_content: "{{ vault_traefik_origin_key }}"
+```
+
+Run only Traefik:
+
+```bash
+ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/traefik.yml
+# or
+make run-traefik
+```
 
 ## OpenClaw Behavior
 
