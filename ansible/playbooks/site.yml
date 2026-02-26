@@ -18,6 +18,10 @@
       tags:
         - traefik
       when: traefik_enable | default(false) | bool
+    - role: homepage
+      tags:
+        - homepage
+      when: homepage_enable | default(false) | bool
     - role: openclaw
       tags:
         - openclaw

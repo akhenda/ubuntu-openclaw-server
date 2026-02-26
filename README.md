@@ -2,7 +2,7 @@
 
 Repeatable, idempotent infrastructure automation for **Ubuntu Server 24.04 LTS (noble)** using Ansible.
 
-This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, can deploy a Traefik reverse-proxy foundation, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
+This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, can deploy a Traefik reverse-proxy foundation, can deploy a Homepage hub service, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
 
 ## What This Repo Does
 
@@ -26,7 +26,11 @@ This repository bootstraps a fresh host, applies a secure baseline, applies DevS
 - create shared `proxy` docker network
 - deploy Traefik stack on `80/443` with Docker provider `exposedByDefault=false`
 - optionally configure dashboard host and Cloudflare origin cert files
-6. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
+6. Optionally deploys Homepage hub behind Traefik:
+- deploy Homepage stack at `/opt/homepage`
+- route `hub.<domain>` via Traefik labels on the container
+- mount docker socket read-only for service discovery widgets
+7. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
 
 ## Controller Prerequisites
 
@@ -134,6 +138,16 @@ cloudflare_dns_records:
 
 Cloudflare Access policy setup (`*.akhenda.net` allowlist by email) remains a manual dashboard step and should be applied after DNS/SSL are in place.
 
+Cloudflare Access click-path (dashboard):
+
+1. `Zero Trust` -> `Access` -> `Applications` -> `Add an application`.
+2. Choose `Self-hosted`.
+3. Set `Application domain` to `*.akhenda.net` (or `hub.akhenda.net` first if you prefer phased rollout).
+4. Add an `Allow` policy:
+- Include your approved emails (for example your Google/GitHub identity emails).
+- Keep default deny for everyone else.
+5. Save and test in an incognito browser to confirm authentication is enforced.
+
 ## Traefik Foundation
 
 The `traefik` role is designed to prepare the VPS for an app-hub model (for example `hub.akhenda.net` and `*.akhenda.net`) without touching existing OpenClaw containers.
@@ -165,6 +179,54 @@ Run only Traefik:
 ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/traefik.yml
 # or
 make run-traefik
+```
+
+## Homepage Hub
+
+The `homepage` role deploys the Homepage dashboard behind Traefik and routes it through `hub.<domain>`.
+
+Behavior:
+
+- deploys stack under `/opt/homepage`
+- uses docker network `proxy` (or your configured Traefik network)
+- adds Traefik labels for `Host(\`hub.<domain>\`)` on `websecure`
+- mounts `/var/run/docker.sock` read-only for Homepage Docker integration
+
+Example:
+
+```yaml
+homepage_enable: true
+homepage_domain: akhenda.net
+homepage_host: hub.akhenda.net
+```
+
+Run only Homepage:
+
+```bash
+ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/homepage.yml
+# or
+make run-homepage
+```
+
+Reusable app compose snippet (for OpenClaw-generated or custom services):
+
+```yaml
+services:
+  myapp:
+    image: ghcr.io/acme/myapp:latest
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.myapp.rule=Host(`myapp.akhenda.net`)"
+      - "traefik.http.routers.myapp.entrypoints=websecure"
+      - "traefik.http.routers.myapp.tls=true"
+      - "traefik.http.services.myapp.loadbalancer.server.port=3000"
+
+networks:
+  proxy:
+    external: true
 ```
 
 ## OpenClaw Behavior

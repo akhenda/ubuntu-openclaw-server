@@ -1,0 +1,22 @@
+services:
+  homepage:
+    image: "{{ homepage_image }}"
+    container_name: "{{ homepage_container_name }}"
+    restart: "{{ homepage_restart_policy }}"
+    volumes:
+      - "{{ homepage_config_dir }}:/app/config"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - "{{ homepage_network_name }}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ homepage_network_name }}"
+      - "traefik.http.routers.homepage.rule=Host(`{{ homepage_host }}`)"
+      - "traefik.http.routers.homepage.entrypoints=websecure"
+      - "traefik.http.routers.homepage.tls=true"
+      - "traefik.http.services.homepage.loadbalancer.server.port={{ homepage_container_port }}"
+
+networks:
+  {{ homepage_network_name }}:
+    external: true
+    name: "{{ homepage_network_name }}"
