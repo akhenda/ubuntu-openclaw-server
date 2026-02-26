@@ -15,6 +15,7 @@ socket_proxy_bind_address: 127.0.0.1
 socket_proxy_bind_port: "2375"
 socket_proxy_endpoint: "http://{{ socket_proxy_container_name }}:2375"
 socket_proxy_compose_idempotence_mode: false
+socket_proxy_apt_lock_timeout: "{{ apt_lock_timeout | default(600) }}"
 
 socket_proxy_env_defaults:
   AUTH: "0"

@@ -14,14 +14,14 @@
           - python3-docker
         state: present
         update_cache: true
-        lock_timeout: 300
+        lock_timeout: "{{ socket_proxy_apt_lock_timeout }}"
       when: socket_proxy_install_docker | bool
 
     - name: Try installing Docker Compose plugin package
       ansible.builtin.apt:
         name: docker-compose-plugin
         state: present
-        lock_timeout: 300
+        lock_timeout: "{{ socket_proxy_apt_lock_timeout }}"
       register: socket_proxy_compose_plugin_install
       failed_when: false
       when: socket_proxy_install_docker | bool
@@ -30,7 +30,7 @@
       ansible.builtin.apt:
         name: docker-compose-v2
         state: present
-        lock_timeout: 300
+        lock_timeout: "{{ socket_proxy_apt_lock_timeout }}"
       register: socket_proxy_compose_v2_install
       failed_when: false
       when:
@@ -40,7 +40,7 @@
       ansible.builtin.apt:
         name: docker-compose
         state: present
-        lock_timeout: 300
+        lock_timeout: "{{ socket_proxy_apt_lock_timeout }}"
       when:
         - socket_proxy_install_docker | bool
         - socket_proxy_compose_v2_install is defined

@@ -22,6 +22,7 @@ provisioner:
   inventory:
     group_vars:
       all:
+        apt_lock_timeout: 1200
         base_apt_upgrade: "no"
         base_ssh_port: "22"
         base_allowed_ssh_ports:
