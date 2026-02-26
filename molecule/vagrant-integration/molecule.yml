@@ -42,13 +42,18 @@ provisioner:
         cloudflare_enable: false
 
         socket_proxy_enable: true
+        socket_proxy_compose_idempotence_mode: true
         traefik_enable: true
+        traefik_admin_user: "vagrant"
         traefik_domain: "example.invalid"
         traefik_dashboard_enable: false
 
         homepage_enable: true
         homepage_domain: "example.invalid"
         homepage_host: "hub.example.invalid"
+
+        os_sysctl_enabled: false
+        os_chmod_home_folders: false
 
         oh_my_zsh_enable: true
         oh_my_zsh_target_user: "vagrant"

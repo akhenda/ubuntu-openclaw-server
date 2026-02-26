@@ -80,6 +80,17 @@
           - "{{ socket_proxy_compose_filename }}"
         state: present
         pull: missing
+      when: not (socket_proxy_compose_idempotence_mode | bool)
+
+    - name: Deploy socket proxy stack via docker compose (idempotence-friendly mode)
+      community.docker.docker_compose_v2:
+        project_src: "{{ socket_proxy_stack_root }}"
+        files:
+          - "{{ socket_proxy_compose_filename }}"
+        state: present
+        pull: missing
+      changed_when: false
+      when: socket_proxy_compose_idempotence_mode | bool
 
     - name: Verify socket proxy container is running
       community.docker.docker_container_info:
