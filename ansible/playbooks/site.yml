@@ -10,6 +10,10 @@
     - role: hardening
       tags:
         - hardening
+    - role: cloudflare
+      tags:
+        - cloudflare
+      when: cloudflare_enable | default(false) | bool
     - role: openclaw
       tags:
         - openclaw

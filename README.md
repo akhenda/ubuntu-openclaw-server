@@ -2,7 +2,7 @@
 
 Repeatable, idempotent infrastructure automation for **Ubuntu Server 24.04 LTS (noble)** using Ansible.
 
-This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
+This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
 
 ## What This Repo Does
 
@@ -17,7 +17,11 @@ This repository bootstraps a fresh host, applies a secure baseline, applies DevS
 3. Applies OS + SSH hardening using `devsec.hardening` collection roles:
 - `devsec.hardening.os_hardening`
 - `devsec.hardening.ssh_hardening`
-4. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
+4. Optionally applies Cloudflare setup:
+- install Cloudflare Origin CA root cert on the server trust store
+- manage Cloudflare DNS records (token/global-key auth)
+- enforce Cloudflare SSL mode (for example `strict`)
+5. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
 
 ## Controller Prerequisites
 
@@ -80,6 +84,50 @@ Example:
 export INFRA_ADMIN_USER=openclaw
 export INFRA_ADMIN_SSH_PUBLIC_KEY=\"ssh-ed25519 AAAA...you@example\"
 ```
+
+## Cloudflare Setup (Traefik-Friendly)
+
+The `cloudflare` role is designed to support hub + wildcard routing patterns like:
+
+- `hub.akhenda.net` -> VPS IP (A record, proxied)
+- `*.akhenda.net` -> `hub.akhenda.net` (CNAME wildcard, proxied)
+- SSL mode forced to `Full (strict)` via Cloudflare API (`cloudflare_ssl_mode: strict`)
+
+Key variables:
+
+- `cloudflare_zone_id`
+- `cloudflare_global_api_key`
+- `cloudflare_dns_api_token` (recommended)
+
+Recommended auth model:
+
+- use `cloudflare_dns_api_token` (Bearer token) instead of global API key
+- if using `cloudflare_global_api_key`, set `cloudflare_email` too
+
+Example:
+
+```yaml
+cloudflare_enable: true
+cloudflare_manage_dns: true
+cloudflare_manage_ssl_mode: true
+cloudflare_ssl_mode: strict
+
+cloudflare_zone_name: akhenda.net
+cloudflare_zone_id: "YOUR_ZONE_ID"
+cloudflare_dns_api_token: "{{ vault_cloudflare_dns_api_token }}"
+
+cloudflare_dns_records:
+  - record: hub
+    type: A
+    value: 185.185.80.175
+    proxied: true
+  - record: "*"
+    type: CNAME
+    value: hub.akhenda.net
+    proxied: true
+```
+
+Cloudflare Access policy setup (`*.akhenda.net` allowlist by email) remains a manual dashboard step and should be applied after DNS/SSL are in place.
 
 ## OpenClaw Behavior
 

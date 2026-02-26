@@ -1,0 +1,195 @@
+---
+- name: Skip Cloudflare configuration when disabled
+  ansible.builtin.debug:
+    msg: "cloudflare_enable is false; skipping Cloudflare setup."
+  when: not (cloudflare_enable | bool)
+
+- name: Configure Cloudflare integration
+  when: cloudflare_enable | bool
+  block:
+    - name: Validate origin CA root type
+      ansible.builtin.assert:
+        that:
+          - cloudflare_origin_ca_root_type in ['rsa', 'ecc']
+        fail_msg: "cloudflare_origin_ca_root_type must be one of: rsa, ecc"
+
+    - name: Install Cloudflare Origin CA root certificate into system trust
+      ansible.builtin.get_url:
+        url: "{{ cloudflare_origin_ca_root_urls[cloudflare_origin_ca_root_type] }}"
+        dest: "/usr/local/share/ca-certificates/cloudflare-origin-ca-{{ cloudflare_origin_ca_root_type }}.crt"
+        owner: root
+        group: root
+        mode: "0644"
+      when: cloudflare_install_origin_ca_root | bool
+      notify: Update CA certificates
+
+    - name: Validate API auth is present when Cloudflare API operations are enabled
+      ansible.builtin.assert:
+        that:
+          - (cloudflare_dns_api_token | length > 0) or (cloudflare_global_api_key | length > 0)
+        fail_msg: >-
+          Cloudflare API operation requested but no credentials provided.
+          Set cloudflare_dns_api_token (recommended) or cloudflare_global_api_key.
+      when: cloudflare_manage_dns | bool or cloudflare_manage_ssl_mode | bool
+
+    - name: Validate email is provided when using global API key auth
+      ansible.builtin.assert:
+        that:
+          - cloudflare_email | length > 0
+        fail_msg: "cloudflare_email is required when using cloudflare_global_api_key auth."
+      when:
+        - (cloudflare_manage_dns | bool or cloudflare_manage_ssl_mode | bool)
+        - cloudflare_dns_api_token | length == 0
+        - cloudflare_global_api_key | length > 0
+
+    - name: Build Cloudflare API auth mode
+      ansible.builtin.set_fact:
+        cloudflare_use_token_auth: "{{ cloudflare_dns_api_token | length > 0 }}"
+      when: cloudflare_manage_dns | bool or cloudflare_manage_ssl_mode | bool
+
+    - name: Build Cloudflare API headers for uri calls
+      ansible.builtin.set_fact:
+        cloudflare_api_headers: >-
+          {{
+            {
+              'Authorization': 'Bearer ' ~ cloudflare_dns_api_token,
+              'Content-Type': 'application/json'
+            }
+            if cloudflare_use_token_auth | bool
+            else {
+              'X-Auth-Email': cloudflare_email,
+              'X-Auth-Key': cloudflare_global_api_key,
+              'Content-Type': 'application/json'
+            }
+          }}
+      no_log: true
+      when: cloudflare_manage_dns | bool or cloudflare_manage_ssl_mode | bool
+
+    - name: Resolve zone name from zone id when needed
+      when:
+        - cloudflare_manage_dns | bool
+        - cloudflare_zone_name | length == 0
+        - cloudflare_zone_id | length > 0
+      block:
+        - name: Query Cloudflare zone details
+          ansible.builtin.uri:
+            url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}"
+            method: GET
+            headers: "{{ cloudflare_api_headers }}"
+            return_content: true
+            status_code: 200
+          register: cloudflare_zone_lookup
+          no_log: true
+
+        - name: Validate Cloudflare zone lookup response
+          ansible.builtin.assert:
+            that:
+              - cloudflare_zone_lookup.json.success | bool
+              - cloudflare_zone_lookup.json.result.name is defined
+            fail_msg: "Could not resolve zone name from cloudflare_zone_id."
+
+        - name: Set zone name from Cloudflare API response
+          ansible.builtin.set_fact:
+            cloudflare_zone_name: "{{ cloudflare_zone_lookup.json.result.name }}"
+
+    - name: Validate DNS management inputs
+      ansible.builtin.assert:
+        that:
+          - cloudflare_zone_name | length > 0
+        fail_msg: >-
+          cloudflare_manage_dns requires cloudflare_zone_name (or cloudflare_zone_id to auto-resolve).
+      when: cloudflare_manage_dns | bool
+
+    - name: Validate each Cloudflare DNS record definition
+      ansible.builtin.assert:
+        that:
+          - item.record is defined
+          - item.type is defined
+          - (item.state | default('present')) in ['present', 'absent']
+          - (item.state | default('present') == 'absent') or (item.value is defined)
+        fail_msg: "Invalid cloudflare_dns_records item: {{ item | to_nice_json }}"
+      loop: "{{ cloudflare_dns_records }}"
+      loop_control:
+        label: "{{ item.record | default('?') }} {{ item.type | default('?') }}"
+      when: cloudflare_manage_dns | bool
+
+    - name: Upsert Cloudflare DNS records
+      community.general.cloudflare_dns:
+        zone: "{{ cloudflare_zone_name }}"
+        record: "{{ item.record }}"
+        type: "{{ item.type }}"
+        value: "{{ item.value | default(omit) }}"
+        ttl: "{{ item.ttl | default(cloudflare_dns_default_ttl) }}"
+        proxied: "{{ item.proxied | default(cloudflare_dns_default_proxied) }}"
+        state: "{{ item.state | default('present') }}"
+        comment: "{{ item.comment | default(omit) }}"
+        tags: "{{ item.tags | default(omit) }}"
+        priority: "{{ item.priority | default(omit) }}"
+        service: "{{ item.service | default(omit) }}"
+        proto: "{{ item.proto | default(omit) }}"
+        port: "{{ item.port | default(omit) }}"
+        solo: "{{ item.solo | default(omit) }}"
+        api_token: "{{ cloudflare_dns_api_token if (cloudflare_use_token_auth | bool) else omit }}"
+        account_api_key: "{{ cloudflare_global_api_key if not (cloudflare_use_token_auth | bool) else omit }}"
+        account_email: "{{ cloudflare_email if not (cloudflare_use_token_auth | bool) else omit }}"
+      loop: "{{ cloudflare_dns_records }}"
+      loop_control:
+        label: "{{ item.record }} {{ item.type }}"
+      no_log: true
+      when:
+        - cloudflare_manage_dns | bool
+        - cloudflare_dns_records | length > 0
+
+    - name: Validate SSL mode inputs
+      ansible.builtin.assert:
+        that:
+          - cloudflare_zone_id | length > 0
+          - cloudflare_ssl_mode in ['off', 'flexible', 'full', 'strict']
+        fail_msg: >-
+          cloudflare_manage_ssl_mode requires cloudflare_zone_id and a valid cloudflare_ssl_mode
+          (off|flexible|full|strict).
+      when: cloudflare_manage_ssl_mode | bool
+
+    - name: Read current Cloudflare SSL mode
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/settings/ssl"
+        method: GET
+        headers: "{{ cloudflare_api_headers }}"
+        return_content: true
+        status_code: 200
+      register: cloudflare_ssl_mode_current
+      no_log: true
+      when: cloudflare_manage_ssl_mode | bool
+
+    - name: Validate Cloudflare SSL mode read response
+      ansible.builtin.assert:
+        that:
+          - cloudflare_ssl_mode_current.json.success | bool
+          - cloudflare_ssl_mode_current.json.result.value is defined
+        fail_msg: "Could not read current Cloudflare SSL mode from API."
+      when: cloudflare_manage_ssl_mode | bool
+
+    - name: Update Cloudflare SSL mode when drift is detected
+      ansible.builtin.uri:
+        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/settings/ssl"
+        method: PATCH
+        headers: "{{ cloudflare_api_headers }}"
+        body_format: json
+        body:
+          value: "{{ cloudflare_ssl_mode }}"
+        return_content: true
+        status_code: 200
+      register: cloudflare_ssl_mode_update
+      changed_when: true
+      no_log: true
+      when:
+        - cloudflare_manage_ssl_mode | bool
+        - cloudflare_ssl_mode_current.json.result.value != cloudflare_ssl_mode
+
+    - name: Confirm Cloudflare settings workflow complete
+      ansible.builtin.debug:
+        msg:
+          - "Cloudflare role completed."
+          - "Origin CA root installed: {{ cloudflare_install_origin_ca_root | bool }}"
+          - "DNS managed: {{ cloudflare_manage_dns | bool }}"
+          - "SSL mode managed: {{ cloudflare_manage_ssl_mode | bool }}"

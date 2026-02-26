@@ -46,6 +46,38 @@ ssh_print_motd: false
 ssh_print_last_log: false
 ssh_print_debian_banner: false
 
+# Cloudflare role
+cloudflare_enable: false
+cloudflare_install_origin_ca_root: true
+cloudflare_origin_ca_root_type: rsa
+
+cloudflare_zone_id: "{{ lookup('ansible.builtin.env', 'CLOUDFLARE_ZONE_ID') | default('', true) }}"
+cloudflare_zone_name: "{{ lookup('ansible.builtin.env', 'CLOUDFLARE_ZONE_NAME') | default('', true) }}"
+cloudflare_email: "{{ lookup('ansible.builtin.env', 'CLOUDFLARE_EMAIL') | default('', true) }}"
+cloudflare_global_api_key: "{{ lookup('ansible.builtin.env', 'CLOUDFLARE_GLOBAL_API_KEY') | default('', true) }}"
+cloudflare_dns_api_token: "{{ lookup('ansible.builtin.env', 'CLOUDFLARE_DNS_API_TOKEN') | default('', true) }}"
+
+cloudflare_manage_ssl_mode: false
+cloudflare_ssl_mode: strict
+cloudflare_manage_dns: false
+cloudflare_dns_default_ttl: 1
+cloudflare_dns_default_proxied: false
+cloudflare_dns_records: []
+# Example for Traefik hub + wildcard app routing:
+# cloudflare_manage_dns: true
+# cloudflare_manage_ssl_mode: true
+# cloudflare_zone_name: akhenda.net
+# cloudflare_zone_id: "YOUR_ZONE_ID"
+# cloudflare_dns_records:
+#   - record: hub
+#     type: A
+#     value: 185.185.80.175
+#     proxied: true
+#   - record: "*"
+#     type: CNAME
+#     value: hub.akhenda.net
+#     proxied: true
+
 # OpenClaw role
 openclaw_enable: false
 openclaw_install_mode: release

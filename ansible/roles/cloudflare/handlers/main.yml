@@ -1,0 +1,7 @@
+---
+- name: Update CA certificates
+  ansible.builtin.command:
+    argv:
+      - update-ca-certificates
+  register: cloudflare_update_ca_certificates
+  changed_when: "'0 added, 0 removed; done.' not in cloudflare_update_ca_certificates.stdout"
