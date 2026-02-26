@@ -5,6 +5,7 @@
   gather_facts: true
   vars:
     expected_ssh_port: "{{ base_ssh_port | default('22') }}"
+    legacy_ssh_port: "22"
   tasks:
     - name: Ensure sshd_config exists
       ansible.builtin.stat:
@@ -21,12 +22,19 @@
         path: /etc/ssh/sshd_config
       register: sshd_config_content
 
+    - name: Decode sshd_config
+      ansible.builtin.set_fact:
+        sshd_config_decoded: "{{ sshd_config_content.content | b64decode }}"
+
     - name: Assert SSH hardening options are applied
       ansible.builtin.assert:
         that:
-          - "'PermitRootLogin no' in (sshd_config_content.content | b64decode)"
-          - "'PasswordAuthentication no' in (sshd_config_content.content | b64decode)"
-          - "'Port ' ~ expected_ssh_port in (sshd_config_content.content | b64decode)"
+          - "'PermitRootLogin no' in sshd_config_decoded"
+          - "'PasswordAuthentication no' in sshd_config_decoded"
+          - "(sshd_config_decoded | regex_search('(?m)^Port\\s+' ~ expected_ssh_port ~ '$')) is not none"
+          - >-
+            (expected_ssh_port == legacy_ssh_port) or
+            ((sshd_config_decoded | regex_search('(?m)^Port\\s+' ~ legacy_ssh_port ~ '$')) is none)
         fail_msg: "sshd_config does not contain expected port/root/password hardening."
 
     - name: Check static hostname
@@ -121,9 +129,31 @@
       changed_when: false
       register: ufw_status
 
-    - name: Assert ufw is active and SSH is allowed
+    - name: Parse ufw status lines
+      ansible.builtin.set_fact:
+        ufw_status_lines: "{{ ufw_status.stdout_lines | map('trim') | list }}"
+
+    - name: Assert ufw is active and SSH rules match expected port policy
       ansible.builtin.assert:
         that:
           - "'Status: active' in ufw_status.stdout"
-          - "expected_ssh_port ~ '/tcp' in ufw_status.stdout or expected_ssh_port in ufw_status.stdout"
-        fail_msg: "ufw is not active or SSH allowance is missing."
+          - >-
+            (
+              ufw_status_lines
+              | select('search', '^' ~ expected_ssh_port ~ '(/tcp)?\\b')
+              | select('search', '\\bALLOW\\b')
+              | list
+              | length
+            ) > 0
+          - >-
+            (expected_ssh_port == legacy_ssh_port) or
+            (
+              (
+                ufw_status_lines
+                | select('search', '^' ~ legacy_ssh_port ~ '(/tcp)?\\b')
+                | select('search', '\\bDENY\\b')
+                | list
+                | length
+              ) > 0
+            )
+        fail_msg: "ufw is not active or SSH allow/deny rules are not as expected."
