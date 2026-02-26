@@ -53,8 +53,119 @@
         chdir: "{{ openclaw_target_dir }}"
       changed_when: false
 
+    - name: Configure OpenClaw Traefik bootstrap policy
+      when: openclaw_manage_bootstrap_policy | bool
+      block:
+        - name: Gather passwd entry for OpenClaw CLI user
+          ansible.builtin.getent:
+            database: passwd
+            key: "{{ openclaw_cli_user }}"
+
+        - name: Derive OpenClaw workspace and policy paths
+          ansible.builtin.set_fact:
+            openclaw_workspace_subpath_clean: "{{ openclaw_workspace_subpath | regex_replace('^/+', '') }}"
+            openclaw_config_subpath_clean: "{{ openclaw_config_subpath | regex_replace('^/+', '') }}"
+            openclaw_cli_home_resolved: "{{ ansible_facts.getent_passwd[openclaw_cli_user][4] }}"
+            openclaw_cli_group_resolved: "{{ ansible_facts.getent_passwd[openclaw_cli_user][2] }}"
+            openclaw_workspace_dir_resolved: >-
+              {{ ansible_facts.getent_passwd[openclaw_cli_user][4] }}/{{ openclaw_workspace_subpath_clean }}
+            openclaw_config_path_resolved: >-
+              {{ ansible_facts.getent_passwd[openclaw_cli_user][4] }}/{{ openclaw_config_subpath_clean }}
+            openclaw_policy_dir_resolved: >-
+              {{ ansible_facts.getent_passwd[openclaw_cli_user][4] }}/{{ openclaw_workspace_subpath_clean }}/{{ openclaw_policy_subdir }}
+
+        - name: Ensure OpenClaw policy directories exist
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: directory
+            owner: "{{ openclaw_cli_user }}"
+            group: "{{ openclaw_cli_group_resolved }}"
+            mode: "{{ item.mode }}"
+          loop:
+            - { path: "{{ openclaw_cli_home_resolved }}/.openclaw", mode: "0750" }
+            - { path: "{{ openclaw_workspace_dir_resolved }}", mode: "0750" }
+            - { path: "{{ openclaw_policy_dir_resolved }}", mode: "0755" }
+
+        - name: Install OpenClaw Traefik policy AGENTS file
+          ansible.builtin.template:
+            src: policy-AGENTS.md.j2
+            dest: "{{ openclaw_policy_dir_resolved }}/AGENTS.md"
+            owner: "{{ openclaw_cli_user }}"
+            group: "{{ openclaw_cli_group_resolved }}"
+            mode: "0644"
+
+        - name: Install OpenClaw Traefik policy SOUL file
+          ansible.builtin.template:
+            src: policy-SOUL.md.j2
+            dest: "{{ openclaw_policy_dir_resolved }}/SOUL.md"
+            owner: "{{ openclaw_cli_user }}"
+            group: "{{ openclaw_cli_group_resolved }}"
+            mode: "0644"
+
+        - name: Verify OpenClaw CLI is available for policy hook configuration
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - --version
+          become: true
+          become_user: "{{ openclaw_cli_user }}"
+          environment:
+            HOME: "{{ openclaw_cli_home_resolved }}"
+          changed_when: false
+
+        - name: Configure OpenClaw workspace and bootstrap-extra-files hook
+          ansible.builtin.command:
+            argv: "{{ ['openclaw', 'config', 'set', item.path, item.value] + (item.json | ternary(['--json'], [])) }}"
+          loop:
+            - path: agents.defaults.workspace
+              value: "{{ openclaw_workspace_dir_resolved }}"
+              json: false
+            - path: hooks.internal.enabled
+              value: "true"
+              json: true
+            - path: hooks.internal.entries.bootstrap-extra-files.enabled
+              value: "true"
+              json: true
+            - path: hooks.internal.entries.bootstrap-extra-files.paths
+              value: "{{ openclaw_policy_hook_paths | to_json }}"
+              json: true
+          loop_control:
+            label: "{{ item.path }}"
+          become: true
+          become_user: "{{ openclaw_cli_user }}"
+          environment:
+            HOME: "{{ openclaw_cli_home_resolved }}"
+          changed_when: false
+
+        - name: Run OpenClaw hook eligibility check
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - hooks
+              - check
+          become: true
+          become_user: "{{ openclaw_cli_user }}"
+          environment:
+            HOME: "{{ openclaw_cli_home_resolved }}"
+          changed_when: false
+
+        - name: Restart OpenClaw gateway to load policy hooks
+          ansible.builtin.command:
+            argv:
+              - openclaw
+              - gateway
+              - restart
+          become: true
+          become_user: "{{ openclaw_cli_user }}"
+          environment:
+            HOME: "{{ openclaw_cli_home_resolved }}"
+          changed_when: false
+          when: openclaw_restart_gateway_after_policy_config | bool
+
     - name: Print post-install OpenClaw next steps
       ansible.builtin.debug:
         msg:
           - "OpenClaw install finished."
+          - "Traefik policy files are managed under {{ openclaw_policy_subdir }} and loaded via bootstrap-extra-files hook."
+          - "OpenClaw config path: {{ openclaw_config_path_resolved | default('~/.openclaw/openclaw.json') }}"
           - "Next: connect to host and run openclaw configure, provider login steps, and optional openclaw onboard."

@@ -237,8 +237,31 @@ When `openclaw_enable: true`, the `openclaw` role:
 2. Clones `openclaw/openclaw-ansible` to `/opt/openclaw-ansible` (default).
 3. Runs `ansible-galaxy collection install -r requirements.yml` in that directory.
 4. Runs `ansible-playbook playbook.yml -e @openclaw-vars.yml` in that directory as root.
+5. Optionally manages OpenClaw bootstrap policy files in the OpenClaw workspace and configures the `bootstrap-extra-files` hook so OpenClaw always receives Traefik routing guardrails.
 
 At a high level, OpenClaw installer can set up components such as optional Tailscale, UFW + fail2ban + unattended-upgrades, Docker, Node/pnpm, and an OpenClaw systemd service.
+
+### OpenClaw Traefik Policy Injection
+
+When `openclaw_manage_bootstrap_policy: true` (default), this repo:
+
+- creates policy files at `~/.openclaw/workspace/bootstrap/openclaw-traefik/AGENTS.md` and `SOUL.md` for `openclaw_cli_user`
+- configures OpenClaw workspace path to `~/.openclaw/workspace`
+- enables `hooks.internal.entries.bootstrap-extra-files`
+- sets hook paths to:
+  - `bootstrap/openclaw-traefik/AGENTS.md`
+  - `bootstrap/openclaw-traefik/SOUL.md`
+
+This gives OpenClaw a repeatable routing contract for Traefik labels/networking whenever new app tasks are bootstrapped.
+
+You can validate on target:
+
+```bash
+openclaw config get agents.defaults.workspace
+openclaw config get hooks.internal.entries.bootstrap-extra-files.enabled
+openclaw config get hooks.internal.entries.bootstrap-extra-files.paths
+openclaw hooks check
+```
 
 ## Post-Install Manual Steps (Human)
 

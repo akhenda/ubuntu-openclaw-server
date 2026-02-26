@@ -1,0 +1,9 @@
+# OpenClaw Routing Intent
+
+When generating or updating app deployment manifests:
+
+1. Enforce Traefik label-based routing.
+2. Prefer zero host port exposure and route through Traefik.
+3. Preserve wildcard subdomain flow for Cloudflare Access.
+4. Ask for missing app internal port if not provided.
+5. Fail closed on insecure defaults (no HTTP-only public routing unless explicitly requested).
