@@ -205,6 +205,7 @@ Example:
 ```yaml
 socket_proxy_enable: true
 socket_proxy_endpoint: "http://docker-socket-proxy:2375"
+socket_proxy_compose_idempotence_mode: false
 socket_proxy_env_overrides:
   CONTAINERS: "1"
   IMAGES: "1"
@@ -366,3 +367,9 @@ ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/site.ym
 - `vagrant-integration` scenario: full `site.yml` with optional roles enabled (`socket_proxy`, `traefik`, `homepage`, `oh_my_zsh`) plus SSH/firewall policy checks (`1773` allowed, `22` denied).
 
 `openclaw_enable` defaults to `false` so Molecule runs are deterministic.
+
+Idempotence and lock-handling notes:
+
+- All role wrapper playbooks set `ansible.builtin.apt` `lock_timeout` via `module_defaults`; default is `apt_lock_timeout=300` seconds.
+- `vagrant-integration` sets `os_sysctl_enabled: false` and `os_chmod_home_folders: false` to avoid known non-idempotent behavior in upstream `devsec.hardening.os_hardening` on ephemeral VMs.
+- `vagrant-integration` sets `socket_proxy_compose_idempotence_mode: true` so the socket proxy compose step does not fail Molecule idempotence checks due to Docker Compose v2 changed reporting.
