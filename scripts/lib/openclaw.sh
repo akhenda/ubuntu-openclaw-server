@@ -259,7 +259,8 @@ openclaw_sync_source_repo() {
 openclaw_install_cli() {
   log_info "[openclaw] installing OpenClaw CLI (${OPENCLAW_NPM_PACKAGE}@${OPENCLAW_NPM_VERSION}) for ${RUNTIME_USER}"
   # Normalize GitHub git transport to HTTPS so npm git deps do not require SSH keys.
-  openclaw_run_as_runtime git config --global url.https://github.com/.insteadOf ssh://git@github.com/
+  openclaw_run_as_runtime git config --global --unset-all url.https://github.com/.insteadOf || true
+  openclaw_run_as_runtime git config --global --add url.https://github.com/.insteadOf ssh://git@github.com/
   openclaw_run_as_runtime git config --global --add url.https://github.com/.insteadOf git@github.com:
   openclaw_run_as_runtime npm config set prefix "${OPENCLAW_NPM_PREFIX}"
   openclaw_run_as_runtime npm install -g "${OPENCLAW_NPM_PACKAGE}@${OPENCLAW_NPM_VERSION}"
