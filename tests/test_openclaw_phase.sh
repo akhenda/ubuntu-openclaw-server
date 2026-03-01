@@ -25,6 +25,17 @@ assert_not_contains() {
   fi
 }
 
+assert_text_contains() {
+  local text="$1"
+  local pattern="$2"
+  if ! grep -Fq "$pattern" <<<"$text"; then
+    echo "Assertion failed: expected '$pattern' in rendered text" >&2
+    echo "--- rendered ---" >&2
+    printf '%s\n' "$text" >&2
+    exit 1
+  fi
+}
+
 make_valid_env() {
   local out="$1"
   local edge_root="$2"
@@ -203,10 +214,24 @@ test_openclaw_policy_injection_lock_is_enforced() {
   assert_contains "$output_file" "OPENCLAW_POLICY_INJECTION must remain true"
 }
 
+test_openclaw_wrapper_forwards_runtime_env() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/openclaw.sh'; \
+    RUNTIME_USER=openclaw; OPENCLAW_ROOT_DIR=/opt/openclaw/openclaw; \
+    OPENCLAW_BIN=/home/openclaw/.npm-global/bin/openclaw; \
+    OPENCLAW_NPM_PREFIX=/home/openclaw/.npm-global; \
+    OPENCLAW_RUNTIME_HOME=/home/openclaw; openclaw_render_cli_wrapper")"
+
+  assert_text_contains "$rendered" 'if [[ -r "${OPENCLAW_ENV_FILE}" ]]; then'
+  assert_text_contains "$rendered" 'OPENCLAW_GATEWAY_PASSWORD="${OPENCLAW_GATEWAY_PASSWORD:-}"'
+  assert_text_contains "$rendered" 'OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE:-}"'
+}
+
 main() {
   test_openclaw_phase_dry_run_applies_runtime
   test_openclaw_phase_can_be_disabled
   test_openclaw_policy_injection_lock_is_enforced
+  test_openclaw_wrapper_forwards_runtime_env
   echo "PASS: test_openclaw_phase.sh"
 }
 

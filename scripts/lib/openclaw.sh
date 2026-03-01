@@ -141,7 +141,7 @@ OPENCLAW_PATH="$(dirname "${OPENCLAW_BIN}"):/usr/local/sbin:/usr/local/bin:/usr/
 OPENCLAW_ENV_FILE="${OPENCLAW_ROOT_DIR}/.env"
 
 load_runtime_env() {
-  if [[ -f "\${OPENCLAW_ENV_FILE}" ]]; then
+  if [[ -r "\${OPENCLAW_ENV_FILE}" ]]; then
     set -a
     # shellcheck disable=SC1090
     source "\${OPENCLAW_ENV_FILE}"
@@ -157,7 +157,14 @@ fi
 
 if [[ "\${USER:-}" == "\${RUNTIME_USER}" ]]; then
   load_runtime_env
-  exec env HOME="\${RUNTIME_HOME}" PATH="\${OPENCLAW_PATH}" "\${OPENCLAW_BIN}" "\$@"
+  exec env \
+    HOME="\${RUNTIME_HOME}" \
+    PATH="\${OPENCLAW_PATH}" \
+    OPENCLAW_GATEWAY_TOKEN="\${OPENCLAW_GATEWAY_TOKEN:-}" \
+    OPENCLAW_GATEWAY_PASSWORD="\${OPENCLAW_GATEWAY_PASSWORD:-}" \
+    OPENCLAW_GATEWAY_PORT="\${OPENCLAW_GATEWAY_PORT:-}" \
+    OPENCLAW_CONFIG_FILE="\${OPENCLAW_CONFIG_FILE:-}" \
+    "\${OPENCLAW_BIN}" "\$@"
 fi
 
 if ! command -v sudo >/dev/null 2>&1; then
@@ -169,6 +176,10 @@ load_runtime_env
 exec sudo -u "\${RUNTIME_USER}" -H env \
   HOME="\${RUNTIME_HOME}" \
   PATH="\${OPENCLAW_PATH}" \
+  OPENCLAW_GATEWAY_TOKEN="\${OPENCLAW_GATEWAY_TOKEN:-}" \
+  OPENCLAW_GATEWAY_PASSWORD="\${OPENCLAW_GATEWAY_PASSWORD:-}" \
+  OPENCLAW_GATEWAY_PORT="\${OPENCLAW_GATEWAY_PORT:-}" \
+  OPENCLAW_CONFIG_FILE="\${OPENCLAW_CONFIG_FILE:-}" \
   "\${OPENCLAW_BIN}" "\$@"
 EOF_WRAPPER
 }
@@ -296,7 +307,7 @@ openclaw_write_runtime_files() {
   policy_file="$(openclaw_render_policy_agents_md)"
 
   openclaw_write_content_if_changed "${OPENCLAW_CONFIG_FILE}" "0600" "${config_json}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
-  openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0600" "${env_file}" "root:root" || true
+  openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0640" "${env_file}" "root:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "${OPENCLAW_POLICY_FILE}" "0644" "${policy_file}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
 }
 
