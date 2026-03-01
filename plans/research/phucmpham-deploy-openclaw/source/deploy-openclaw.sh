@@ -1,0 +1,1129 @@
+#!/usr/bin/env bash
+# deploy-openclaw.sh — Interactive TUI wizard for deploying OpenClaw on Ubuntu/Debian VPS
+# Usage: curl -fsSL https://raw.githubusercontent.com/PhucMPham/deploy-openclaw/main/scripts/deploy-openclaw.sh | bash
+# Or:    bash deploy-openclaw.sh
+# shellcheck disable=SC2059  # Intentional: color vars in printf format strings
+# shellcheck disable=SC2015  # Intentional: A && B || C where B always succeeds (print_status)
+set -euo pipefail
+umask 077
+
+# ============================================================================
+# SECTION A: Constants & Globals
+# ============================================================================
+
+readonly SCRIPT_VERSION="1.0.0"
+readonly SCRIPT_URL="https://raw.githubusercontent.com/PhucMPham/deploy-openclaw/main/scripts/deploy-openclaw.sh"
+readonly OPENCLAW_USER="openclaw"
+readonly OPENCLAW_HOME="/opt/openclaw"
+readonly STATE_FILE="${OPENCLAW_HOME}/.deploy-state"
+readonly LOG_FILE="${OPENCLAW_HOME}/deploy.log"
+readonly MIN_NODE_MAJOR=22
+readonly MIN_DISK_MB=2048
+
+# Colors
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly CYAN='\033[0;36m'
+readonly BOLD='\033[1m'
+readonly DIM='\033[2m'
+readonly NC='\033[0m'
+
+# Rollback stack
+declare -a ROLLBACK_STACK=()
+
+# Background process tracking
+declare -a BG_PIDS=()
+
+# ============================================================================
+# SECTION B: TUI Components (gum → fzf → select/read fallback)
+# ============================================================================
+
+# Install gum for best TUI experience (arrow keys, spacebar, etc.)
+install_gum() {
+    if command -v gum &>/dev/null; then
+        printf "  ${GREEN}✓${NC} gum already installed\n"
+        return 0
+    fi
+    # Only attempt on Debian/Ubuntu with root
+    if [[ ! -f /etc/os-release ]] || [[ "$(id -u)" -ne 0 ]]; then return 1; fi
+
+    printf "  Installing gum (interactive UI toolkit)... "
+    apt-get update -qq >/dev/null 2>&1
+    apt-get install -y -qq gpg curl >/dev/null 2>&1 || return 1
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --batch --yes --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null || return 1
+    echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" > /etc/apt/sources.list.d/charm.list
+    apt-get update -qq >/dev/null 2>&1
+    if apt-get install -y -qq gum >/dev/null 2>&1; then
+        printf "${GREEN}done${NC}\n"
+        return 0
+    else
+        printf "${RED}failed${NC} (will use number menus)\n"
+        return 1
+    fi
+}
+
+# Auto-install gum, fall back gracefully if it fails
+[[ "${DEPLOY_TESTING:-}" != "1" ]] && { install_gum || true; }
+
+# Detect best available TUI backend
+if [[ "${DEPLOY_TESTING:-}" != "1" ]]; then
+    HAS_GUM=false; HAS_FZF=false
+    command -v gum &>/dev/null && HAS_GUM=true
+    command -v fzf &>/dev/null && HAS_FZF=true
+fi
+
+# Single-select menu. Returns selected index (0-based) in TUI_RESULT.
+# Usage: tui_menu "Pick one:" "Option A" "Option B" "Option C"
+tui_menu() {
+    local prompt="$1"; shift
+    local -a options=("$@")
+    local count=${#options[@]}
+    local choice
+
+    if $HAS_GUM; then
+        choice=$(gum choose --header "$prompt" "${options[@]}") || true
+    elif $HAS_FZF; then
+        choice=$(printf '%s\n' "${options[@]}" | fzf --height=$((count + 2)) --prompt="$prompt > ") || true
+    else
+        # Bash select fallback — works everywhere
+        echo ""
+        printf "${BOLD}%s${NC}\n" "$prompt"
+        PS3="Enter choice (1-${count}): "
+        select choice in "${options[@]}"; do
+            [[ -n "$choice" ]] && break
+            echo "Invalid selection. Try again."
+        done
+    fi
+
+    # Map choice text back to index
+    TUI_RESULT=0
+    local i
+    for ((i = 0; i < count; i++)); do
+        if [[ "${options[$i]}" == "$choice" ]]; then
+            TUI_RESULT=$i
+            return
+        fi
+    done
+}
+
+# Multi-select checkbox menu. Returns space-separated indices in TUI_RESULT.
+# Usage: tui_checkbox "Select items:" "on:UFW Firewall" "on:SSH Keys" "off:SSH Hardening"
+tui_checkbox() {
+    local prompt="$1"; shift
+    local -a labels=()
+    local -a defaults=()
+    local i
+
+    for item in "$@"; do
+        local prefix="${item%%:*}"
+        local label="${item#*:}"
+        labels+=("$label")
+        [[ "$prefix" == "on" ]] && defaults+=("$label")
+    done
+
+    local count=${#labels[@]}
+    local -a selected_labels=()
+
+    if $HAS_GUM; then
+        local gum_args=(gum choose --no-limit --header "$prompt")
+        for d in "${defaults[@]}"; do
+            gum_args+=(--selected "$d")
+        done
+        gum_args+=("${labels[@]}")
+        # Read gum output line by line
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && selected_labels+=("$line")
+        done < <("${gum_args[@]}" 2>/dev/null || true)
+    elif $HAS_FZF; then
+        # Pre-select defaults by marking them
+        local fzf_input=""
+        for ((i = 0; i < count; i++)); do
+            fzf_input+="${labels[$i]}"$'\n'
+        done
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && selected_labels+=("$line")
+        done < <(printf '%s' "$fzf_input" | fzf --multi --height=$((count + 2)) --prompt="$prompt > " || true)
+    else
+        # Numbered list fallback with toggle
+        echo ""
+        printf "${BOLD}%s${NC}\n" "$prompt"
+        printf "${DIM}  Type a number (1-%d) to toggle on/off, then press ENTER${NC}\n" "$count"
+        printf "${DIM}  Type 0 and press ENTER when done${NC}\n\n"
+        local -a states=()
+        for ((i = 0; i < count; i++)); do
+            states+=(0)
+            for d in "${defaults[@]}"; do
+                [[ "${labels[$i]}" == "$d" ]] && states[i]=1
+            done
+        done
+
+        while true; do
+            for ((i = 0; i < count; i++)); do
+                local mark="  "
+                ((states[i])) && mark="${GREEN}✓ ${NC}"
+                printf "  %b%d. %s\n" "$mark" "$((i + 1))" "${labels[$i]}"
+            done
+            echo ""
+            printf "  Toggle [1-%d] or confirm [0]: " "$count"
+            local input
+            read -r input
+            if [[ "$input" == "0" || "$input" == "" ]]; then
+                break
+            elif [[ "$input" =~ ^[0-9]+$ ]] && ((input >= 1 && input <= count)); then
+                local idx=$((input - 1))
+                ((states[idx] = !states[idx]))
+            else
+                printf "  ${RED}Invalid.${NC} Enter 1-%d to toggle, 0 to confirm.\n" "$count"
+            fi
+            # Move cursor up to redraw list
+            printf "\033[%dA\033[J" $((count + 2))
+        done
+
+        for ((i = 0; i < count; i++)); do
+            ((states[i])) && selected_labels+=("${labels[$i]}")
+        done
+    fi
+
+    # Map selected labels back to indices
+    TUI_RESULT=""
+    for ((i = 0; i < count; i++)); do
+        for sel in "${selected_labels[@]}"; do
+            if [[ "${labels[$i]}" == "$sel" ]]; then
+                TUI_RESULT+="$i "
+                break
+            fi
+        done
+    done
+    TUI_RESULT="${TUI_RESULT% }"
+}
+
+# Yes/No confirmation. Returns 0=yes, 1=no.
+tui_confirm() {
+    local question="$1"
+    if $HAS_GUM; then
+        local rc=0
+        gum confirm "$question" || rc=$?
+        return $rc
+    else
+        tui_menu "$question" "Yes" "No"
+        return "$TUI_RESULT"
+    fi
+}
+
+# Spinner displayed while a background command runs.
+# Usage: some_command & tui_spinner $! "Installing..."
+tui_spinner() {
+    local pid="$1"
+    local label="$2"
+    BG_PIDS+=("$pid")
+
+    if $HAS_GUM; then
+        gum spin --spinner dot --title "$label" -- bash -c "while kill -0 $pid 2>/dev/null; do sleep 0.5; done" 2>/dev/null || true
+        wait "$pid" 2>/dev/null
+        return $?
+    fi
+
+    # Simple fallback spinner
+    local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local i=0
+
+    tput civis 2>/dev/null || true
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r  ${CYAN}%s${NC} %s" "${frames[$((i % ${#frames[@]}))]}" "$label"
+        ((i++))
+        sleep 0.1
+    done
+
+    wait "$pid" 2>/dev/null
+    local exit_code=$?
+    printf "\r\033[K"
+    tput cnorm 2>/dev/null || true
+    return "$exit_code"
+}
+
+# Print colored status line
+print_status() {
+    local type="$1"; shift
+    local msg="$*"
+    case "$type" in
+        ok)   printf "  ${GREEN}✓${NC} %s\n" "$msg" ;;
+        warn) printf "  ${YELLOW}⚠${NC} %s\n" "$msg" ;;
+        fail) printf "  ${RED}✗${NC} %s\n" "$msg" ;;
+        info) printf "  ${BLUE}ℹ${NC} %s\n" "$msg" ;;
+    esac
+}
+
+# ANSI art banner (pre-rendered with Chafa from wizard lobster mascot)
+print_banner() {
+    if [[ "${TERM:-}" == "dumb" || "${NO_COLOR:-}" == "1" ]]; then
+        printf "\n  OpenClaw Deploy Wizard v%s\n\n" "$SCRIPT_VERSION"
+        return
+    fi
+    cat << 'BANNER'
+[0m[7m[38;5;16m [0m[38;5;1;48;5;16m                  [38;5;143;48;5;232m▂[38;5;179;48;5;233m▄[38;5;60;48;5;237m━[38;5;240;48;5;233m▆[48;5;16m▇▇[48;5;232m▖[48;5;16m    [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m                [38;5;60;48;5;232m▃[38;5;240;48;5;235m▇[38;5;179;48;5;240m▝[48;5;239m     [38;5;59;48;5;137m▉[38;5;221;48;5;236m▖[48;5;16m   [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m             [38;5;16;48;5;232m╴[38;5;243;48;5;235m┎[38;5;244;48;5;239m╸    [38;5;239;48;5;240m╵[38;5;95m▁[38;5;238;48;5;233m▊[38;5;232;48;5;236m▂[38;5;237;48;5;240m▄[38;5;137;48;5;239m▝[38;5;16;48;5;238m▝[48;5;16m  [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m            [38;5;60;48;5;232m▗[38;5;185;48;5;240m▝[38;5;179m╸[48;5;239m    [38;5;137;48;5;240m▗[38;5;179;48;5;241m▄[48;5;238m▋[38;5;237;48;5;232m▋[48;5;16m  [38;5;16;48;5;237m▆[38;5;232;48;5;238m▖[38;5;238;48;5;16m▍ [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m           [38;5;240;48;5;233m▄[38;5;239;48;5;60m╴[48;5;239m [38;5;137m▗[38;5;179m▄[38;5;95;48;5;240m╴[48;5;239m    [38;5;238;48;5;237m▎[38;5;237;48;5;16m▌    ▘ [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m    [38;5;232;48;5;236m▉[38;5;233;48;5;95m▚[38;5;16m▄[38;5;88;48;5;232m▅[38;5;52;48;5;16m▁[38;5;237;48;5;232m▁[38;5;233;48;5;60m▘[38;5;239;48;5;240m┊[48;5;239m  [38;5;221;48;5;240m▝[38;5;137;48;5;59m▌[38;5;95;48;5;239m▂[38;5;131m▄[38;5;95m▅ [38;5;239;48;5;238m▊[48;5;237m [38;5;237;48;5;16m▍      [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m    [38;5;131m▝[38;5;124;48;5;233m─[38;5;52;48;5;16m╴[38;5;16;48;5;232m╴[38;5;167;48;5;52m▚[38;5;96;48;5;239m┖[38;5;240;48;5;179m▘[38;5;179;48;5;240m▆[38;5;95m▏[48;5;239m  [38;5;238;48;5;124m▘[38;5;131;48;5;238m▘[38;5;235;48;5;239m▗[38;5;124;48;5;238m▁[48;5;236m▌[38;5;239;48;5;237m▍[38;5;238m╴[38;5;236;48;5;16m▍      [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m  [38;5;236m▁[38;5;97m▁[38;5;96m▂[38;5;60m▃[48;5;232m▄[48;5;234m▅[38;5;167;48;5;238m▝[38;5;125;48;5;237m▎[38;5;239;48;5;137m▇[38;5;137;48;5;239m▘  [38;5;238;48;5;124m▊[38;5;125;48;5;236m▋[48;5;239m  [38;5;239;48;5;124m▇[48;5;239m [48;5;238m▎[38;5;238;48;5;101m▊[38;5;143;48;5;235m▖[48;5;16m      [0m
+[38;5;236;48;5;232m╶[38;5;235;48;5;238m▅[48;5;60m▅[38;5;236;48;5;96m▆[38;5;235;48;5;240m▅[38;5;232;48;5;237m─[38;5;234;48;5;239m▃[38;5;235m▃[38;5;236m▂[38;5;234m▁[38;5;237m▂▁[38;5;238m▁▁[38;5;237m▁ [38;5;239;48;5;238m▇[48;5;239m [48;5;238m▆[48;5;239m [38;5;236;48;5;238m╺[38;5;239;48;5;237m▂[38;5;238;48;5;137m▆[38;5;143;48;5;237m▘[48;5;16m      [0m
+[7m[38;5;16m [0m[38;5;16;48;5;233m▇[48;5;235m▅[48;5;236m▃[38;5;232m▁ [38;5;131;48;5;235m▗[38;5;95;48;5;167m▘[38;5;167;48;5;131m╴[38;5;131;48;5;88m▇[48;5;233m▇[38;5;125;48;5;232m▇[38;5;131;48;5;236m▆▆[48;5;235m▆▆[38;5;124m▆[48;5;236m▅[48;5;237m▄[38;5;235;48;5;95m━[38;5;237;48;5;239m┒[38;5;236m▂ [38;5;238;48;5;235m▇[38;5;237;48;5;233m▅[38;5;236;48;5;16m▃    [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m    [38;5;16;48;5;232m╴[38;5;95;48;5;167m▘ [38;5;80;48;5;94m▗[38;5;86;48;5;88m▆[38;5;122;48;5;95m▖[38;5;130;48;5;167m▏  [38;5;237m▗[38;5;79;48;5;124m▅[38;5;80;48;5;88m▅[38;5;243;48;5;131m▏[48;5;167m [38;5;167;48;5;131m▃[48;5;124m▆▄[38;5;124;48;5;235m▇[38;5;88m▍[38;5;234;48;5;237m┭[38;5;235m┐[38;5;234m▂[38;5;237;48;5;232m▄[38;5;234;48;5;16m▂ [0m
+[38;5;16;48;5;16m [38;5;173;48;5;232m▃[38;5;167;48;5;16m▅▅[38;5;95;48;5;232m▆[38;5;131;48;5;236m▋[38;5;210;48;5;167m▍ [38;5;131;48;5;242m▇[48;5;122m▅[38;5;167;48;5;66m▅[38;5;88;48;5;167m╲  [38;5;167;48;5;95m▉[38;5;131;48;5;80m▅[38;5;130;48;5;79m▄[38;5;167;48;5;131m╴[48;5;167m   [38;5;52m▗[38;5;167;48;5;131m╴[48;5;236m▅[38;5;95;48;5;235m▖[38;5;16;48;5;236m▂▂[48;5;235m▂[48;5;236m▂[38;5;235;48;5;232m╸[0m
+[38;5;234;48;5;167m▍[38;5;124m▁[38;5;52m▂ [38;5;167;48;5;125m╴[38;5;233;48;5;52m▅[38;5;234;48;5;167m▖     [38;5;167;48;5;234m▇[48;5;167m        [48;5;52m▊[38;5;234;48;5;124m╸[38;5;167;48;5;52m▇[48;5;131m▇[48;5;236m▇[38;5;174;48;5;233m▖[48;5;16m   [0m
+[38;5;16;48;5;88m▆[48;5;52m▇[38;5;124;48;5;233m╺[38;5;232;48;5;131m▃[38;5;16;48;5;88m▄[48;5;16m [38;5;124;48;5;232m▅[38;5;52;48;5;124m▗[38;5;88;48;5;167m▁          [38;5;124m▃[38;5;167;48;5;124m╵[38;5;124;48;5;52m▘[48;5;131m╵[38;5;233m▗[48;5;167m  [38;5;167;48;5;16m▊   [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m    [38;5;16;48;5;131m▊[38;5;167;48;5;234m▌[38;5;232;48;5;88m▌[38;5;124;48;5;52m▋[38;5;233;48;5;130m▆[38;5;52;48;5;124m▖[38;5;88m╻[38;5;234;48;5;167m▂[38;5;232m▁[38;5;52m▁[38;5;232;48;5;131m▁[38;5;16;48;5;124m▁[38;5;52m▂[38;5;233;48;5;88m╶[38;5;232m▅[38;5;52m▂[38;5;88;48;5;233m▋[38;5;232;48;5;88m▌[38;5;124;48;5;16m▌[38;5;167;48;5;232m▝[38;5;232;48;5;131m▄[38;5;16;48;5;236m▇[48;5;16m   [0m
+[7m[38;5;16m [0m[38;5;1;48;5;16m      [38;5;88m▝[38;5;167;48;5;233m▘[48;5;16m [48;5;233m▝[38;5;232;48;5;124m▗[48;5;16m     [48;5;124m▖[38;5;16;48;5;88m▗[48;5;16m [38;5;124;48;5;232m▝[38;5;167;48;5;233m▘[48;5;16m [38;5;16;48;5;234m▇[48;5;16m      [0m
+BANNER
+
+    printf "\n"
+    printf "  ${RED}OpenClaw${NC}  Deploy Wizard\n"
+    printf "  ${DIM}Version %s | %s | %s${NC}\n\n" \
+        "$SCRIPT_VERSION" "$(uname -s)" "$(date '+%Y-%m-%d %H:%M')"
+}
+
+# ============================================================================
+# SECTION C: State Persistence
+# ============================================================================
+
+state_init() {
+    if [[ ! -d "$OPENCLAW_HOME" ]]; then
+        run_with_sudo "mkdir -p $OPENCLAW_HOME"
+    fi
+    if [[ ! -f "$STATE_FILE" ]]; then
+        run_with_sudo "touch $STATE_FILE"
+        run_with_sudo "chmod 600 $STATE_FILE"
+    fi
+}
+
+state_load() {
+    [[ ! -f "$STATE_FILE" ]] && return 0
+    while IFS='=' read -r key value; do
+        [[ -z "$key" || "$key" == \#* ]] && continue
+        [[ "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || continue
+        value="${value#\"}"
+        value="${value%\"}"
+        value="${value//[^a-zA-Z0-9_.\/:-]/}"
+        declare -g "$key=$value"
+    done < "$STATE_FILE"
+}
+
+state_save() {
+    local key="$1" val="$2"
+    # Validate key format
+    if [[ ! "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        log "WARN" "state_save: invalid key rejected: $key"
+        return 1
+    fi
+    # Sanitize value
+    val="${val//[^a-zA-Z0-9_.\/:-]/}"
+    # Remove existing key, then append
+    if [[ -f "$STATE_FILE" ]]; then
+        local tmp
+        tmp=$(grep -v "^${key}=" "$STATE_FILE" 2>/dev/null || true)
+        printf '%s\n' "$tmp" > "$STATE_FILE"
+    fi
+    printf '%s="%s"\n' "$key" "$val" >> "$STATE_FILE"
+}
+
+state_get() {
+    local key="$1"
+    local val=""
+    if [[ -f "$STATE_FILE" ]]; then
+        val=$(grep "^${key}=" "$STATE_FILE" 2>/dev/null | tail -1 | cut -d'"' -f2 || true)
+    fi
+    echo "$val"
+}
+
+state_show_summary() {
+    printf "\n${BOLD}  Deployment Status${NC}\n"
+    printf "  ─────────────────────────────────\n"
+    local phases=("system_check:System Check" "user_setup:User Setup" "security_setup:Security Setup" "software_install:Software Install" "openclaw_setup:OpenClaw Setup")
+    local num=1
+    for entry in "${phases[@]}"; do
+        local key="${entry%%:*}"
+        local label="${entry#*:}"
+        local status
+        status=$(state_get "phase_${key}")
+        local icon="${DIM}○${NC}"
+        [[ "$status" == "done" ]] && icon="${GREEN}●${NC}"
+        [[ "$status" == "partial" ]] && icon="${YELLOW}◐${NC}"
+        printf "  %b Phase %d: %s\n" "$icon" "$num" "$label"
+        ((num++))
+    done
+    printf "  ─────────────────────────────────\n\n"
+}
+
+# ============================================================================
+# SECTION D: System Detection
+# ============================================================================
+
+# Retry wrapper for critical network operations
+retry_curl() {
+    local url="$1"; shift
+    local attempts=3 delay=5 i
+    for ((i=1; i<=attempts; i++)); do
+        if curl -fsSL --max-time 120 --connect-timeout 10 "$url" "$@"; then
+            return 0
+        fi
+        ((i < attempts)) && { print_status warn "Download failed, retry $i/$attempts..."; sleep "$delay"; }
+    done
+    return 1
+}
+
+detect_os() {
+    if [[ ! -f /etc/os-release ]]; then
+        print_status fail "Cannot detect OS: /etc/os-release not found"
+        return 1
+    fi
+
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    OS_ID="${ID:-unknown}"
+    OS_VERSION="${VERSION_ID:-0}"
+    OS_NAME="${PRETTY_NAME:-Unknown}"
+
+    case "$OS_ID" in
+        ubuntu)
+            if ! awk 'BEGIN{exit !('"$OS_VERSION"' >= 22.04)}'; then
+                print_status fail "Ubuntu $OS_VERSION detected. Minimum: 22.04"
+                return 1
+            fi
+            ;;
+        debian)
+            if ((${OS_VERSION%%.*} < 11)); then
+                print_status fail "Debian $OS_VERSION detected. Minimum: 11"
+                return 1
+            fi
+            ;;
+        *)
+            print_status warn "Untested OS: $OS_NAME. Proceed with caution."
+            ;;
+    esac
+    print_status ok "OS: $OS_NAME"
+}
+
+detect_user() {
+    CURRENT_USER=$(whoami)
+    IS_ROOT=false
+    HAS_SUDO=false
+
+    [[ "$CURRENT_USER" == "root" ]] && IS_ROOT=true
+    if ! $IS_ROOT && sudo -n true 2>/dev/null; then
+        HAS_SUDO=true
+    fi
+
+    if $IS_ROOT; then
+        print_status ok "Running as root"
+    elif $HAS_SUDO; then
+        print_status ok "Running as $CURRENT_USER (sudo available)"
+    else
+        print_status warn "Running as $CURRENT_USER (no passwordless sudo — will prompt as needed)"
+    fi
+}
+
+check_internet() {
+    if retry_curl "https://openclaw.bot" -o /dev/null 2>&1; then
+        print_status ok "Internet connectivity OK"
+    else
+        print_status fail "Cannot reach openclaw.bot — check internet"
+        return 1
+    fi
+}
+
+check_disk_space() {
+    local avail_mb
+    avail_mb=$(df -m / | awk 'NR==2{print $4}')
+    if ((avail_mb < MIN_DISK_MB)); then
+        print_status fail "Disk space: ${avail_mb}MB available (need ${MIN_DISK_MB}MB)"
+        return 1
+    fi
+    print_status ok "Disk space: ${avail_mb}MB available"
+}
+
+check_existing_software() {
+    HAS_NODE=false; NODE_VER=""
+    HAS_NVM=false
+    HAS_DOCKER=false
+    HAS_OPENCLAW=false; OPENCLAW_VER=""
+    HAS_UFW=false
+    HAS_FAIL2BAN=false
+    HAS_TAILSCALE=false
+
+    # Node.js
+    if command -v node &>/dev/null; then
+        HAS_NODE=true
+        NODE_VER=$(node -v 2>/dev/null | sed 's/^v//')
+    fi
+    # NVM
+    if [[ -d "${HOME}/.nvm" ]] || [[ -d "/home/${OPENCLAW_USER}/.nvm" ]]; then
+        HAS_NVM=true
+    fi
+    # Docker
+    if command -v docker &>/dev/null; then
+        HAS_DOCKER=true
+    fi
+    # OpenClaw
+    load_nvm_silent
+    if command -v openclaw &>/dev/null; then
+        HAS_OPENCLAW=true
+        OPENCLAW_VER=$(openclaw --version 2>/dev/null || echo "unknown")
+    fi
+    # Security tools
+    command -v ufw &>/dev/null && HAS_UFW=true
+    command -v fail2ban-client &>/dev/null && HAS_FAIL2BAN=true
+    command -v tailscale &>/dev/null && HAS_TAILSCALE=true
+
+    printf "\n  ${BOLD}Existing Software${NC}\n"
+    [[ "$HAS_NODE" == true ]]      && print_status ok "Node.js $NODE_VER" || print_status info "Node.js not found"
+    [[ "$HAS_NVM" == true ]]       && print_status ok "NVM installed"     || print_status info "NVM not found"
+    [[ "$HAS_DOCKER" == true ]]    && print_status ok "Docker installed"  || print_status info "Docker not found"
+    [[ "$HAS_OPENCLAW" == true ]]  && print_status ok "OpenClaw $OPENCLAW_VER" || print_status info "OpenClaw not found"
+    [[ "$HAS_UFW" == true ]]       && print_status ok "UFW installed"     || print_status info "UFW not found"
+    [[ "$HAS_FAIL2BAN" == true ]]  && print_status ok "fail2ban installed" || print_status info "fail2ban not found"
+    [[ "$HAS_TAILSCALE" == true ]] && print_status ok "Tailscale installed" || print_status info "Tailscale not found"
+}
+
+# Run command with appropriate privilege escalation
+run_with_sudo() {
+    local cmd="$*"
+    if $IS_ROOT; then
+        bash -c "$cmd"
+    elif $HAS_SUDO || sudo -n true 2>/dev/null; then
+        sudo bash -c "$cmd"
+    else
+        printf "\n  ${YELLOW}This command requires root privileges:${NC}\n"
+        printf "  ${DIM}%s${NC}\n" "$cmd"
+        printf "  Run it manually, then press ENTER to continue..."
+        read -r
+    fi
+}
+
+# Detect pipe mode and re-exec with tty.
+# When running via `curl | bash`, bash already consumed all stdin so we
+# re-download the script to a temp file and re-exec with /dev/tty as stdin.
+ensure_not_piped() {
+    if [[ ! -t 0 ]]; then
+        if [[ ! -c /dev/tty ]]; then
+            printf "ERROR: No TTY available. Run directly: bash <(curl -fsSL %s)\n" "$SCRIPT_URL" >&2
+            exit 1
+        fi
+        local tmp_dir
+        tmp_dir=$(mktemp -d) || { printf "Failed to create temp dir\n" >&2; exit 1; }
+        local tmp_script="${tmp_dir}/deploy-openclaw.sh"
+        printf "Detected pipe mode. Downloading script for interactive use...\n"
+        retry_curl "$SCRIPT_URL" -o "$tmp_script"
+        if [[ ! -s "$tmp_script" ]]; then
+            printf "ERROR: Downloaded script is empty\n" >&2
+            rm -rf "$tmp_dir"
+            exit 1
+        fi
+        chmod 700 "$tmp_script"
+        exec bash "$tmp_script" "$@" < /dev/tty
+    fi
+}
+
+# Silently try to load NVM for openclaw user or current user
+load_nvm_silent() {
+    local nvm_dir="${NVM_DIR:-}"
+    [[ -z "$nvm_dir" && -d "$HOME/.nvm" ]] && nvm_dir="$HOME/.nvm"
+    [[ -z "$nvm_dir" && -d "/home/${OPENCLAW_USER}/.nvm" ]] && nvm_dir="/home/${OPENCLAW_USER}/.nvm"
+    if [[ -n "$nvm_dir" && -s "${nvm_dir}/nvm.sh" ]]; then
+        export NVM_DIR="$nvm_dir"
+        # shellcheck disable=SC1091
+        source "${nvm_dir}/nvm.sh" 2>/dev/null || true
+    fi
+}
+
+# ============================================================================
+# SECTION E: Phase Functions
+# ============================================================================
+
+# ---------- Phase 1: System Check ----------
+phase_system_check() {
+    printf "\n${BOLD}═══ Phase 1: System Check ═══${NC}\n\n"
+
+    detect_os || return 1
+    detect_user
+    check_internet || return 1
+    check_disk_space || return 1
+    check_existing_software
+
+    state_save "phase_system_check" "done"
+    printf "\n"
+    print_status ok "System check complete"
+}
+
+# ---------- Phase 2: User Setup ----------
+phase_user_setup() {
+    printf "\n${BOLD}═══ Phase 2: User Setup ═══${NC}\n\n"
+
+    # Create openclaw user if not exists
+    if id "$OPENCLAW_USER" &>/dev/null; then
+        print_status ok "User '$OPENCLAW_USER' already exists"
+    else
+        print_status info "Creating user '$OPENCLAW_USER'..."
+        run_with_sudo "useradd -m -s /bin/bash $OPENCLAW_USER"
+        print_status ok "User '$OPENCLAW_USER' created"
+    fi
+
+    # Add to docker group (create group if needed)
+    if getent group docker &>/dev/null; then
+        if id -nG "$OPENCLAW_USER" 2>/dev/null | grep -qw docker; then
+            print_status ok "'$OPENCLAW_USER' already in docker group"
+        else
+            run_with_sudo "usermod -aG docker $OPENCLAW_USER"
+            print_status ok "Added '$OPENCLAW_USER' to docker group"
+        fi
+    else
+        print_status info "Docker group doesn't exist yet (will be created with Docker install)"
+    fi
+
+    # Create workspace
+    if [[ -d "$OPENCLAW_HOME" ]]; then
+        print_status ok "Workspace $OPENCLAW_HOME exists"
+    else
+        run_with_sudo "mkdir -p $OPENCLAW_HOME"
+        print_status ok "Created $OPENCLAW_HOME"
+    fi
+    run_with_sudo "chown -R ${OPENCLAW_USER}:${OPENCLAW_USER} ${OPENCLAW_HOME}"
+
+    # Create .env template if not exists
+    local env_file="${OPENCLAW_HOME}/.env"
+    if [[ ! -f "$env_file" ]]; then
+        run_with_sudo "touch $env_file && chmod 600 $env_file && chown ${OPENCLAW_USER}:${OPENCLAW_USER} $env_file"
+        print_status ok "Created $env_file (chmod 600)"
+    else
+        print_status ok "$env_file already exists"
+    fi
+
+    state_save "phase_user_setup" "done"
+    printf "\n"
+    print_status ok "User setup complete"
+}
+
+# ---------- Phase 3: Security Setup ----------
+phase_security_setup() {
+    printf "\n${BOLD}═══ Phase 3: Security Setup ═══${NC}\n\n"
+
+    tui_checkbox "Select security components to configure:" \
+        "on:UFW Firewall" \
+        "on:SSH Key Setup (guided)" \
+        "off:SSH Hardening (disable password login)" \
+        "on:fail2ban" \
+        "off:Tailscale VPN"
+
+    local selected="$TUI_RESULT"
+    [[ -z "$selected" ]] && { print_status warn "No security components selected"; return 0; }
+
+    # Parse selections
+    local do_ufw=false do_sshkeys=false do_sshharden=false do_fail2ban=false do_tailscale=false
+    for idx in $selected; do
+        case "$idx" in
+            0) do_ufw=true ;;
+            1) do_sshkeys=true ;;
+            2) do_sshharden=true ;;
+            3) do_fail2ban=true ;;
+            4) do_tailscale=true ;;
+        esac
+    done
+
+    # --- Batch apt install for selected packages ---
+    local apt_packages=()
+    $do_ufw && apt_packages+=("ufw")
+    $do_fail2ban && apt_packages+=("fail2ban")
+    if ((${#apt_packages[@]} > 0)); then
+        run_with_sudo "apt-get update -qq && apt-get install -y -qq ${apt_packages[*]}" &>/dev/null &
+        if ! tui_spinner $! "Installing ${apt_packages[*]}..."; then
+            print_status warn "Package installation may have failed — continuing with available packages"
+        fi
+    fi
+
+    # --- UFW ---
+    if $do_ufw; then
+        printf "\n  ${BOLD}UFW Firewall${NC}\n"
+        if ! command -v ufw &>/dev/null; then
+            print_status warn "UFW not available — install may have failed"
+        else
+            local ufw_cmds="ufw default deny incoming && ufw default allow outgoing && ufw allow ssh && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable"
+            if run_with_sudo "$ufw_cmds" >/dev/null 2>&1; then
+                print_status ok "UFW configured: deny incoming, allow SSH/80/443"
+            else
+                print_status warn "UFW setup failed (may need real VPS, not Docker container)"
+            fi
+        fi
+    fi
+
+    # --- SSH Key Setup ---
+    if $do_sshkeys; then
+        printf "\n  ${BOLD}SSH Key Setup${NC}\n"
+
+        # Auto-detect existing SSH keys
+        local keys_found=false
+        [[ -f /root/.ssh/authorized_keys && -s /root/.ssh/authorized_keys ]] && keys_found=true
+        [[ -f "/home/${OPENCLAW_USER}/.ssh/authorized_keys" && -s "/home/${OPENCLAW_USER}/.ssh/authorized_keys" ]] && keys_found=true
+
+        if $keys_found; then
+            print_status ok "SSH authorized_keys detected"
+            state_save "ssh_keys_verified" "true"
+            print_status ok "SSH key login auto-confirmed"
+        else
+            print_status warn "No SSH keys detected in authorized_keys"
+            print_status info "To set up SSH key access, run this from your LOCAL machine:"
+            printf "\n    ${CYAN}ssh-copy-id root@<server-ip>${NC}\n"
+            printf "    ${DIM}(or: ssh-copy-id %s@<server-ip>)${NC}\n\n" "$OPENCLAW_USER"
+            print_status info "After copying your key, test login in a NEW terminal before continuing."
+
+            printf "\n"
+            tui_menu "Have you set up and tested SSH key login?" \
+                "Yes, SSH key login works" \
+                "Skip for now"
+
+            if ((TUI_RESULT == 0)); then
+                state_save "ssh_keys_verified" "true"
+                print_status ok "SSH key login confirmed"
+            else
+                state_save "ssh_keys_verified" "false"
+                print_status warn "SSH keys not verified — SSH hardening will be blocked"
+            fi
+        fi
+    fi
+
+    # --- SSH Hardening ---
+    if $do_sshharden; then
+        printf "\n  ${BOLD}SSH Hardening${NC}\n"
+
+        local keys_verified
+        keys_verified=$(state_get "ssh_keys_verified")
+        if [[ "$keys_verified" != "true" ]]; then
+            print_status fail "REFUSED: SSH keys must be verified before hardening!"
+            print_status info "Run SSH Key Setup first, verify key login, then retry."
+        else
+            print_status warn "This will disable password login and restrict root to key-only."
+            printf "\n"
+            print_status warn "Make sure you have VNC/console access as a fallback!"
+
+            tui_menu "Proceed with SSH hardening?" "Yes, I have console access as backup" "No, skip this"
+
+            if ((TUI_RESULT == 0)); then
+                # Backup sshd_config
+                local sshd_conf="/etc/ssh/sshd_config"
+                local backup
+                backup="${sshd_conf}.bak.$(date +%Y%m%d%H%M%S)"
+                run_with_sudo "cp $sshd_conf $backup"
+                ROLLBACK_STACK+=("cp $backup $sshd_conf && systemctl reload sshd")
+                print_status ok "Backed up sshd_config → $backup"
+
+                # Apply hardening
+                run_with_sudo "sed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication no/' $sshd_conf"
+                run_with_sudo "sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin prohibit-password/' $sshd_conf"
+
+                # Test config before reload
+                if run_with_sudo "sshd -t" 2>/dev/null; then
+                    run_with_sudo "systemctl reload sshd"
+                    print_status ok "SSH hardened: password auth disabled, root key-only"
+                else
+                    print_status fail "sshd config test failed! Rolling back..."
+                    run_with_sudo "cp $backup $sshd_conf"
+                    print_status ok "Rolled back to previous sshd_config"
+                fi
+            else
+                print_status info "SSH hardening skipped"
+            fi
+        fi
+    fi
+
+    # --- fail2ban ---
+    if $do_fail2ban; then
+        printf "\n  ${BOLD}fail2ban${NC}\n"
+        if ! command -v fail2ban-client &>/dev/null; then
+            print_status warn "fail2ban not available — install may have failed"
+        elif run_with_sudo "systemctl enable fail2ban && systemctl start fail2ban" >/dev/null 2>&1; then
+            print_status ok "fail2ban installed and enabled"
+        else
+            print_status warn "fail2ban installed but systemd not available (Docker?)"
+        fi
+    fi
+
+    # --- Tailscale ---
+    if $do_tailscale; then
+        printf "\n  ${BOLD}Tailscale VPN${NC}\n"
+        if ! command -v tailscale &>/dev/null; then
+            run_with_sudo "curl -fsSL https://tailscale.com/install.sh | sh" &>/dev/null &
+            tui_spinner $! "Installing Tailscale..." || true
+        fi
+        print_status info "Run 'tailscale up' to authenticate with your Tailscale account."
+        print_status info "After connecting, you can optionally restrict SSH to Tailscale only:"
+        printf "    ${DIM}ufw allow from 100.64.0.0/10 to any port 22${NC}\n"
+        printf "    ${DIM}ufw delete allow ssh${NC}\n"
+
+        tui_menu "Run 'tailscale up' now?" "Yes" "I'll do it later"
+        if ((TUI_RESULT == 0)); then
+            run_with_sudo "tailscale up"
+        fi
+    fi
+
+    state_save "phase_security_setup" "done"
+    printf "\n"
+    print_status ok "Security setup complete"
+}
+
+# ---------- Phase 4: Software Installation ----------
+phase_software_install() {
+    printf "\n${BOLD}═══ Phase 4: Software Installation ═══${NC}\n\n"
+
+    check_disk_space || return 1
+
+    # --- Docker ---
+    if command -v docker &>/dev/null; then
+        print_status ok "Docker already installed: $(docker --version 2>/dev/null | head -1)"
+    else
+        print_status info "Installing Docker CE..."
+        run_with_sudo "apt-get update -qq" &>/dev/null
+        run_with_sudo "apt-get install -y -qq ca-certificates curl gnupg" &>/dev/null
+
+        run_with_sudo "install -m 0755 -d /etc/apt/keyrings"
+
+        # Detect distro for Docker repo
+        # shellcheck disable=SC1091
+        source /etc/os-release
+        local docker_url="https://download.docker.com/linux/${ID}"
+        run_with_sudo "curl -fsSL ${docker_url}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg" 2>/dev/null
+        run_with_sudo "chmod a+r /etc/apt/keyrings/docker.gpg"
+
+        local arch
+        arch=$(dpkg --print-architecture)
+        run_with_sudo "echo \"deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] ${docker_url} ${VERSION_CODENAME} stable\" > /etc/apt/sources.list.d/docker.list"
+
+        run_with_sudo "apt-get update -qq && apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" &>/dev/null &
+        tui_spinner $! "Installing Docker CE..." || {
+            print_status fail "Docker installation failed. Check $LOG_FILE"
+            return 1
+        }
+
+        # Add openclaw user to docker group
+        if id "$OPENCLAW_USER" &>/dev/null; then
+            run_with_sudo "usermod -aG docker $OPENCLAW_USER"
+        fi
+        print_status ok "Docker CE installed"
+    fi
+
+    # --- NVM + Node.js ---
+    local target_user="$OPENCLAW_USER"
+    local target_home
+    target_home=$(eval echo "~${target_user}")
+    local nvm_dir="${target_home}/.nvm"
+
+    # Install NVM if not present for target user
+    if [[ ! -d "$nvm_dir" ]]; then
+        print_status info "Installing NVM for $target_user..."
+        local nvm_install_cmd="curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
+        if [[ "$CURRENT_USER" == "$target_user" ]]; then
+            bash -c "$nvm_install_cmd" &>/dev/null &
+            tui_spinner $! "Installing NVM..." || true
+        else
+            run_with_sudo "su - $target_user -c '$nvm_install_cmd'" &>/dev/null &
+            tui_spinner $! "Installing NVM..." || true
+        fi
+        print_status ok "NVM installed"
+    else
+        print_status ok "NVM already installed at $nvm_dir"
+    fi
+
+    # Install Node.js via NVM
+    local node_install_cmd="export NVM_DIR=\"${nvm_dir}\" && . \"\${NVM_DIR}/nvm.sh\" && nvm install 24 && nvm alias default 24"
+    local current_node_major=0
+
+    # Check current node version
+    if [[ "$CURRENT_USER" == "$target_user" ]]; then
+        export NVM_DIR="$nvm_dir"
+        # shellcheck disable=SC1091
+        [[ -s "${nvm_dir}/nvm.sh" ]] && source "${nvm_dir}/nvm.sh" 2>/dev/null || true
+        if command -v node &>/dev/null; then
+            current_node_major=$(node -v 2>/dev/null | sed 's/^v//' | cut -d. -f1)
+        fi
+    fi
+
+    if ((current_node_major >= MIN_NODE_MAJOR)); then
+        print_status ok "Node.js v$(node -v 2>/dev/null | sed 's/^v//') (>= $MIN_NODE_MAJOR required)"
+    else
+        print_status info "Installing Node.js v24 via NVM..."
+        if [[ "$CURRENT_USER" == "$target_user" ]]; then
+            bash -c "$node_install_cmd" &>/dev/null &
+            tui_spinner $! "Installing Node.js v24..." || true
+        else
+            run_with_sudo "su - $target_user -c '$node_install_cmd'" &>/dev/null &
+            tui_spinner $! "Installing Node.js v24..." || true
+        fi
+        print_status ok "Node.js v24 installed"
+    fi
+
+    # --- OpenClaw ---
+    # Reload NVM/PATH to find openclaw
+    load_nvm_silent
+
+    if command -v openclaw &>/dev/null; then
+        print_status ok "OpenClaw already installed: $(openclaw --version 2>/dev/null)"
+    else
+        print_status info "Installing OpenClaw via official installer..."
+        print_status info "This may take a minute. The installer may show its own output."
+        printf "\n"
+
+        # Run OpenClaw installer in foreground (it may need interactive input or show progress)
+        local oc_install="curl -fsSL https://openclaw.bot/install.sh | bash"
+        local install_ok=false
+        if [[ "$CURRENT_USER" == "$target_user" ]]; then
+            if bash -c "$oc_install"; then
+                install_ok=true
+            fi
+        else
+            local full_cmd="export NVM_DIR=\"${nvm_dir}\" && . \"\${NVM_DIR}/nvm.sh\" && $oc_install"
+            if su - "$target_user" -c "$full_cmd"; then
+                install_ok=true
+            fi
+        fi
+
+        printf "\n"
+
+        # Verify
+        load_nvm_silent
+        if command -v openclaw &>/dev/null; then
+            print_status ok "OpenClaw installed: $(openclaw --version 2>/dev/null)"
+        elif $install_ok; then
+            print_status warn "OpenClaw installed but not in PATH. Log in as $target_user to use."
+        else
+            print_status warn "OpenClaw install may have failed or timed out."
+            print_status info "Try manually: su - $target_user -c '$oc_install'"
+        fi
+    fi
+
+    state_save "phase_software_install" "done"
+    printf "\n"
+    print_status ok "Software installation complete"
+}
+
+# ---------- Phase 5: OpenClaw Setup ----------
+phase_openclaw_setup() {
+    printf "\n${BOLD}═══ Phase 5: OpenClaw Setup ═══${NC}\n\n"
+
+    print_status info "OpenClaw onboard wizard will now run."
+    printf "\n  It will ask you to configure:\n"
+    printf "  ${DIM}• Model provider & authentication${NC}\n"
+    printf "  ${DIM}  (Anthropic API key/setup-token, OpenRouter, OpenAI, Google, etc.)${NC}\n"
+    printf "  ${DIM}• Workspace directory${NC}\n"
+    printf "  ${DIM}• Gateway configuration (loopback/lan/tailnet)${NC}\n"
+    printf "  ${DIM}• Messaging channels (Discord, Telegram, WhatsApp, Slack, Signal, iMessage)${NC}\n"
+    printf "  ${DIM}• Systemd daemon installation${NC}\n"
+    printf "\n"
+
+    tui_menu "Ready to launch OpenClaw onboard?" \
+        "Yes, launch onboard wizard" \
+        "Skip (I'll run it manually later)"
+
+    if ((TUI_RESULT == 0)); then
+        printf "\n${CYAN}  Handing off to openclaw onboard...${NC}\n\n"
+
+        local target_user="$OPENCLAW_USER"
+        local target_home
+        target_home=$(eval echo "~${target_user}")
+        local nvm_dir="${target_home}/.nvm"
+        local onboard_cmd="export NVM_DIR=\"${nvm_dir}\" && . \"\${NVM_DIR}/nvm.sh\" && openclaw onboard --install-daemon"
+
+        if [[ "$CURRENT_USER" == "$target_user" ]]; then
+            load_nvm_silent
+            openclaw onboard --install-daemon
+        else
+            # Run interactively as openclaw user
+            run_with_sudo "su - $target_user -c '$onboard_cmd'" < /dev/tty
+        fi
+
+        printf "\n"
+
+        # Verify gateway
+        load_nvm_silent
+        if command -v openclaw &>/dev/null; then
+            printf "\n  ${BOLD}Verifying gateway...${NC}\n"
+            if openclaw gateway status &>/dev/null 2>&1; then
+                print_status ok "OpenClaw gateway is running"
+            else
+                print_status warn "Gateway not detected. Check: openclaw gateway status"
+            fi
+        fi
+    else
+        print_status info "Skipped. Run manually as '$OPENCLAW_USER':"
+        printf "    ${CYAN}openclaw onboard --install-daemon${NC}\n"
+    fi
+
+    # Print next steps
+    printf "\n  ${BOLD}Next Steps${NC}\n"
+    printf "  ${DIM}• Add channels later:${NC}   openclaw configure\n"
+    printf "  ${DIM}• Health check:${NC}         openclaw doctor\n"
+    printf "  ${DIM}• Gateway status:${NC}       openclaw gateway status\n"
+    printf "  ${DIM}• Config file:${NC}          ~/.openclaw/openclaw.json\n"
+
+    state_save "phase_openclaw_setup" "done"
+    printf "\n"
+    print_status ok "OpenClaw setup complete"
+}
+
+# ============================================================================
+# SECTION F: Error Handling
+# ============================================================================
+
+on_error() {
+    local line="$1"
+    local cmd="$2"
+    log "ERROR" "Line $line: $cmd"
+    printf "\n"
+    print_status fail "Error at line $line: $cmd"
+    print_status info "Check log: $LOG_FILE"
+
+    tui_menu "What would you like to do?" "Continue anyway" "Abort"
+    if ((TUI_RESULT == 1)); then
+        rollback_execute
+        exit 1
+    fi
+}
+
+rollback_push() {
+    ROLLBACK_STACK+=("$1")
+}
+
+rollback_execute() {
+    if ((${#ROLLBACK_STACK[@]} == 0)); then
+        return
+    fi
+    printf "\n  ${BOLD}Rolling back changes...${NC}\n"
+    local i
+    for ((i = ${#ROLLBACK_STACK[@]} - 1; i >= 0; i--)); do
+        print_status info "Undo: ${ROLLBACK_STACK[$i]}"
+        bash -c "${ROLLBACK_STACK[$i]}" 2>/dev/null || true
+    done
+    ROLLBACK_STACK=()
+    print_status ok "Rollback complete"
+}
+
+# Safe execution wrapper: run_safe "description" "command" ["rollback_command"]
+run_safe() {
+    local desc="$1"
+    local cmd="$2"
+    local rollback="${3:-}"
+
+    [[ -n "$rollback" ]] && rollback_push "$rollback"
+
+    if bash -c "$cmd" >> "$LOG_FILE" 2>&1; then
+        print_status ok "$desc"
+    else
+        print_status fail "$desc"
+        log "ERROR" "Failed: $cmd"
+        return 1
+    fi
+}
+
+log() {
+    local level="$1"; shift
+    local msg="$*"
+    # Ensure log directory exists
+    if [[ -d "$(dirname "$LOG_FILE")" ]]; then
+        printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$msg" >> "$LOG_FILE" 2>/dev/null || true
+    fi
+}
+
+# ============================================================================
+# SECTION G: Main Entry Point
+# ============================================================================
+
+cleanup() {
+    tput cnorm 2>/dev/null || true
+    printf "${NC}"
+    local pid
+    for pid in "${BG_PIDS[@]:-}"; do
+        kill "$pid" 2>/dev/null || true
+    done
+}
+
+run_full_setup() {
+    phase_system_check || return 1
+    printf "\n"
+    tui_menu "Continue to User Setup?" "Yes" "Stop here"
+    ((TUI_RESULT == 1)) && return 0
+
+    phase_user_setup || return 1
+    printf "\n"
+    tui_menu "Continue to Security Setup?" "Yes" "Stop here"
+    ((TUI_RESULT == 1)) && return 0
+
+    phase_security_setup
+    printf "\n"
+    tui_menu "Continue to Software Installation?" "Yes" "Stop here"
+    ((TUI_RESULT == 1)) && return 0
+
+    phase_software_install || return 1
+    printf "\n"
+    tui_menu "Continue to OpenClaw Setup?" "Yes" "Stop here"
+    ((TUI_RESULT == 1)) && return 0
+
+    phase_openclaw_setup
+    printf "\n"
+    print_status ok "Full setup complete!"
+}
+
+main() {
+    ensure_not_piped "$@"
+    trap cleanup EXIT
+    trap 'printf "\n"; print_status warn "Interrupted"; exit 130' INT TERM
+    trap 'on_error $LINENO "$BASH_COMMAND"' ERR
+
+    print_banner
+
+    # Initialize state persistence (needs sudo for /opt/openclaw)
+    detect_user
+    state_init
+    state_load
+
+    # Check if resuming
+    local has_state=false
+    [[ -s "$STATE_FILE" ]] && has_state=true
+
+    while true; do
+        if $has_state; then
+            state_show_summary
+        fi
+
+        local menu_label="Run Full Setup (Recommended)"
+        $has_state && menu_label="Resume Full Setup"
+
+        tui_menu "Main Menu" \
+            "$menu_label" \
+            "Phase 1: System Check" \
+            "Phase 2: User Setup" \
+            "Phase 3: Security Setup" \
+            "Phase 4: Software Install" \
+            "Phase 5: OpenClaw Setup" \
+            "View Status" \
+            "Exit"
+
+        case "$TUI_RESULT" in
+            0) run_full_setup ;;
+            1) phase_system_check ;;
+            2) phase_user_setup ;;
+            3) phase_security_setup ;;
+            4) phase_software_install ;;
+            5) phase_openclaw_setup ;;
+            6) state_show_summary ;;
+            7) printf "\n"; print_status info "Goodbye!"; exit 0 ;;
+        esac
+
+        printf "\n"
+        tui_menu "Return to main menu?" "Yes" "Exit"
+        ((TUI_RESULT == 1)) && { printf "\n"; print_status info "Goodbye!"; exit 0; }
+    done
+}
+
+# Run main when executed directly or piped; skip when sourced (for testing)
+[[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "${0}" ]] && main "$@"
