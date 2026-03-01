@@ -143,9 +143,18 @@ These tests are deterministic dry-run checks of each phase contract.
 
 ## Legacy Tooling
 
-This repository still contains historical Ansible/Molecule files and some legacy `make` targets (`lint`, `test-docker`, `test-vagrant`, etc.).
+This repository still contains historical Ansible/Molecule files and legacy compatibility targets.
 
-The authoritative implementation path is now the Bash toolkit under `scripts/` + `config/example.env`.
+Use `legacy-*` targets if you intentionally restore/use the old layout, for example:
+
+1. `make legacy-lint`
+2. `make legacy-test-docker`
+3. `make legacy-test-vagrant`
+4. `make legacy-test-vagrant-integration`
+
+The old unprefixed targets (`lint`, `test-docker`, etc.) are compatibility aliases.
+
+The authoritative implementation path remains the Bash toolkit under `scripts/` + `config/example.env`.
 
 ## Deferred Work
 

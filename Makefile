@@ -1,9 +1,29 @@
 SHELL := /bin/bash
-export ANSIBLE_HOME := $(CURDIR)/.ansible
-OPENCLAW_UI_PORT ?= 3000
-CONFIG_FILE ?= config/.env
+.DEFAULT_GOAL := help
 
-.PHONY: deps check-config run-install test-scripts galaxy lint test-docker test-vagrant test-vagrant-integration run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage local-openclaw-up local-openclaw-tunnel local-openclaw-down
+CONFIG_FILE ?= config/.env
+OPENCLAW_UI_PORT ?= 3000
+
+.PHONY: \
+	help \
+	deps check-config run-install test-scripts \
+	legacy-lint legacy-test-docker legacy-test-vagrant legacy-test-vagrant-integration \
+	lint test-docker test-vagrant test-vagrant-integration \
+	run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage \
+	local-openclaw-up local-openclaw-tunnel local-openclaw-down
+
+help:
+	@echo "Active Bash Toolkit Targets:"
+	@echo "  make deps                         Install Python dependencies"
+	@echo "  make check-config                 Validate config file (CONFIG_FILE=...)"
+	@echo "  make run-install                  Run full Bash installer"
+	@echo "  make test-scripts                 Run Bash phase test suite"
+	@echo ""
+	@echo "Legacy Targets (require old ansible/ layout):"
+	@echo "  make legacy-lint"
+	@echo "  make legacy-test-docker"
+	@echo "  make legacy-test-vagrant"
+	@echo "  make legacy-test-vagrant-integration"
 
 deps:
 	pip install -r requirements.txt
@@ -26,55 +46,36 @@ test-scripts:
 	bash tests/test_report_phase.sh
 	bash tests/test_verify_phase.sh
 
-galaxy:
-	ansible-galaxy collection install -r ansible/requirements.yml
-
-lint:
+legacy-lint:
+	@test -d ansible || { echo "Legacy target unavailable: ansible/ directory not found."; exit 2; }
 	ansible-lint --project-dir "$(CURDIR)"
 	yamllint .
 
-test-docker:
+legacy-test-docker:
+	@test -d ansible || { echo "Legacy target unavailable: ansible/ directory not found."; exit 2; }
+	@test -d molecule || { echo "Legacy target unavailable: molecule/ directory not found."; exit 2; }
 	@set -o pipefail; molecule test -s docker 2>&1 | grep -vE "WARNING  Driver .* does not provide a schema."
 
-test-vagrant:
+legacy-test-vagrant:
+	@test -d ansible || { echo "Legacy target unavailable: ansible/ directory not found."; exit 2; }
+	@test -d molecule || { echo "Legacy target unavailable: molecule/ directory not found."; exit 2; }
 	@set -o pipefail; molecule test -s vagrant 2>&1 | grep -vE "WARNING  Driver .* does not provide a schema.|\\[WARNING\\]: Found variable using reserved name: connection"
 
-test-vagrant-integration:
+legacy-test-vagrant-integration:
+	@test -d ansible || { echo "Legacy target unavailable: ansible/ directory not found."; exit 2; }
+	@test -d molecule || { echo "Legacy target unavailable: molecule/ directory not found."; exit 2; }
 	@set -o pipefail; molecule test -s vagrant-integration 2>&1 | grep -vE "WARNING  Driver .* does not provide a schema.|\\[WARNING\\]: Found variable using reserved name: connection"
 
-run-prod:
-	ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/site.yml
+lint: legacy-lint
 
-run-vagrant:
-	ansible-playbook -i ansible/inventories/vagrant/hosts.ini ansible/playbooks/site.yml
+test-docker: legacy-test-docker
 
-run-shell:
-	ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/oh_my_zsh.yml
+test-vagrant: legacy-test-vagrant
 
-run-socket-proxy:
-	ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/socket_proxy.yml
+test-vagrant-integration: legacy-test-vagrant-integration
 
-run-traefik:
-	ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/traefik.yml
-
-run-homepage:
-	ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/homepage.yml
-
-local-openclaw-up:
-	-molecule destroy -s vagrant-integration
-	molecule create -s vagrant-integration
-	molecule converge -s vagrant-integration -- -e @$(CURDIR)/molecule/vagrant-integration/local-openclaw.vars
-
-local-openclaw-tunnel:
-	@set -euo pipefail; \
-	vagrant_dir="$$(find .ansible/tmp -type f -path "*vagrant-integration/Vagrantfile" -print -quit | xargs -I{} dirname "{}")"; \
-	if [ -z "$$vagrant_dir" ]; then \
-		echo "No vagrant-integration VM found. Run 'make local-openclaw-up' first."; \
-		exit 1; \
-	fi; \
-	echo "Opening tunnel http://127.0.0.1:$(OPENCLAW_UI_PORT) -> VM localhost:$(OPENCLAW_UI_PORT)"; \
-	echo "Press Ctrl+C to close the tunnel."; \
-	(cd "$$vagrant_dir" && vagrant ssh -- -N -L $(OPENCLAW_UI_PORT):127.0.0.1:$(OPENCLAW_UI_PORT))
-
-local-openclaw-down:
-	molecule destroy -s vagrant-integration
+run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage local-openclaw-up local-openclaw-tunnel local-openclaw-down:
+	@echo "Deprecated legacy target '$@'."
+	@echo "Use 'make run-install CONFIG_FILE=...'."
+	@echo "If you need old Ansible workflows, restore ansible/ content and use legacy-* targets."
+	@exit 2
