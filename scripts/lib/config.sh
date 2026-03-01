@@ -55,6 +55,15 @@ set_default_config() {
   : "${FIREWALL_ALLOW_HTTP:=false}"
   : "${FIREWALL_ALLOW_HTTPS:=false}"
   : "${FIREWALL_EXTRA_TCP_PORTS:=}"
+  : "${EDGE_ENABLE:=true}"
+  : "${EDGE_ROOT_DIR:=/opt/openclaw}"
+  : "${EDGE_START_STACK:=true}"
+  : "${EDGE_REQUIRE_TUNNEL_CREDENTIALS:=true}"
+  : "${TRAEFIK_IMAGE:=traefik:v3.0}"
+  : "${CLOUDFLARED_IMAGE:=cloudflare/cloudflared:latest}"
+  : "${TRAEFIK_DASHBOARD_HOST:=traefik.${APPS_DOMAIN}}"
+  : "${TRAEFIK_DASHBOARD_USERS:=}"
+  : "${CLOUDFLARED_CREDENTIALS_FILE:=}"
 
   : "${EDGE_NETWORK_NAME:=openclaw-edge}"
   : "${EDGE_SUBNET:=172.30.0.0/24}"
@@ -64,6 +73,8 @@ set_default_config() {
 
   export ADMIN_USER RUNTIME_USER SSH_PORT ADMIN_USER_SHELL RUNTIME_USER_SHELL REMOVE_DEFAULT_UBUNTU_USER
   export FIREWALL_ENABLE FIREWALL_ALLOW_HTTP FIREWALL_ALLOW_HTTPS FIREWALL_EXTRA_TCP_PORTS
+  export EDGE_ENABLE EDGE_ROOT_DIR EDGE_START_STACK EDGE_REQUIRE_TUNNEL_CREDENTIALS
+  export TRAEFIK_IMAGE CLOUDFLARED_IMAGE TRAEFIK_DASHBOARD_HOST TRAEFIK_DASHBOARD_USERS CLOUDFLARED_CREDENTIALS_FILE
   export EDGE_NETWORK_NAME EDGE_SUBNET TRAEFIK_IP CLOUDFLARED_IP OPENCLAW_GATEWAY_IP
 }
 
@@ -122,6 +133,20 @@ validate_tcp_port_list_var() {
   done
 }
 
+validate_path_is_absolute() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ "$value" =~ ^/ ]] || die "${name} must be an absolute path, got: ${value}"
+}
+
+validate_hostname_like_var() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ -z "${value}" ]] && return 0
+  [[ "$value" == "${value,,}" ]] || die "${name} must be lowercase: ${value}"
+  [[ "$value" =~ ^([a-z0-9-]+\.)+[a-z]{2,}$ ]] || die "${name} has invalid host format: ${value}"
+}
+
 resolve_admin_ssh_public_key() {
   if [[ -z "${ADMIN_SSH_PUBLIC_KEY:-}" && -n "${ADMIN_SSH_PUBLIC_KEY_FILE:-}" ]]; then
     require_file "${ADMIN_SSH_PUBLIC_KEY_FILE}"
@@ -153,6 +178,14 @@ validate_config() {
   validate_boolean_var FIREWALL_ALLOW_HTTP
   validate_boolean_var FIREWALL_ALLOW_HTTPS
   validate_tcp_port_list_var FIREWALL_EXTRA_TCP_PORTS
+  validate_boolean_var EDGE_ENABLE
+  validate_boolean_var EDGE_START_STACK
+  validate_boolean_var EDGE_REQUIRE_TUNNEL_CREDENTIALS
+  validate_path_is_absolute EDGE_ROOT_DIR
+  validate_hostname_like_var TRAEFIK_DASHBOARD_HOST
+  if [[ -n "${CLOUDFLARED_CREDENTIALS_FILE:-}" ]]; then
+    validate_path_is_absolute CLOUDFLARED_CREDENTIALS_FILE
+  fi
 
   [[ "$EDGE_NETWORK_NAME" == "openclaw-edge" ]] || die "EDGE_NETWORK_NAME must be openclaw-edge, got: $EDGE_NETWORK_NAME"
 
@@ -184,6 +217,10 @@ validate_config() {
     log_warn "Domain layout: Option B selected. Ensure Cloudflare SSL coverage is explicitly handled."
   else
     log_warn "Custom APPS_DOMAIN layout detected: $APPS_DOMAIN (ensure wildcard cert and DNS strategy are valid)."
+  fi
+
+  if [[ "${EDGE_ROOT_DIR}" != "/opt/openclaw" ]]; then
+    log_warn "EDGE_ROOT_DIR is non-default (${EDGE_ROOT_DIR}). Canonical production contract expects /opt/openclaw."
   fi
 
   if [[ -n "${REPORT_CHANNEL:-}" && -z "${REPORT_TARGET:-}" ]]; then
@@ -221,6 +258,15 @@ Configuration summary:
   FIREWALL_ALLOW_HTTP=${FIREWALL_ALLOW_HTTP}
   FIREWALL_ALLOW_HTTPS=${FIREWALL_ALLOW_HTTPS}
   FIREWALL_EXTRA_TCP_PORTS=${FIREWALL_EXTRA_TCP_PORTS:-<unset>}
+  EDGE_ENABLE=${EDGE_ENABLE}
+  EDGE_ROOT_DIR=${EDGE_ROOT_DIR}
+  EDGE_START_STACK=${EDGE_START_STACK}
+  EDGE_REQUIRE_TUNNEL_CREDENTIALS=${EDGE_REQUIRE_TUNNEL_CREDENTIALS}
+  TRAEFIK_IMAGE=${TRAEFIK_IMAGE}
+  CLOUDFLARED_IMAGE=${CLOUDFLARED_IMAGE}
+  TRAEFIK_DASHBOARD_HOST=${TRAEFIK_DASHBOARD_HOST}
+  TRAEFIK_DASHBOARD_USERS=$(redact_secret "${TRAEFIK_DASHBOARD_USERS}")
+  CLOUDFLARED_CREDENTIALS_FILE=${CLOUDFLARED_CREDENTIALS_FILE:-<unset>}
   REPORT_CHANNEL=${REPORT_CHANNEL:-<unset>}
   REPORT_TARGET=${REPORT_TARGET:-<unset>}
 SUMMARY
