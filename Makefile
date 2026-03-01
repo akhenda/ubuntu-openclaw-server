@@ -16,6 +16,7 @@ run-install:
 
 test-scripts:
 	bash tests/test_packages_phase.sh
+	bash tests/test_user_phase.sh
 
 galaxy:
 	ansible-galaxy collection install -r ansible/requirements.yml

@@ -34,9 +34,9 @@ load_config_file() {
 
     [[ "$key" =~ ^[A-Z_][A-Z0-9_]*$ ]] || die "Invalid config key: $key"
 
-    if [[ "$value" =~ ^".*"$ ]]; then
+    if (( ${#value} >= 2 )) && [[ "${value:0:1}" == '"' && "${value: -1}" == '"' ]]; then
       value="${value:1:${#value}-2}"
-    elif [[ "$value" =~ ^\'.*\'$ ]]; then
+    elif (( ${#value} >= 2 )) && [[ "${value:0:1}" == "'" && "${value: -1}" == "'" ]]; then
       value="${value:1:${#value}-2}"
     fi
 
@@ -48,6 +48,9 @@ set_default_config() {
   : "${ADMIN_USER:=hendaz}"
   : "${RUNTIME_USER:=openclaw}"
   : "${SSH_PORT:=1773}"
+  : "${ADMIN_USER_SHELL:=/bin/bash}"
+  : "${RUNTIME_USER_SHELL:=/bin/bash}"
+  : "${REMOVE_DEFAULT_UBUNTU_USER:=true}"
 
   : "${EDGE_NETWORK_NAME:=openclaw-edge}"
   : "${EDGE_SUBNET:=172.30.0.0/24}"
@@ -55,7 +58,7 @@ set_default_config() {
   : "${CLOUDFLARED_IP:=172.30.0.3}"
   : "${OPENCLAW_GATEWAY_IP:=172.30.0.10}"
 
-  export ADMIN_USER RUNTIME_USER SSH_PORT
+  export ADMIN_USER RUNTIME_USER SSH_PORT ADMIN_USER_SHELL RUNTIME_USER_SHELL REMOVE_DEFAULT_UBUNTU_USER
   export EDGE_NETWORK_NAME EDGE_SUBNET TRAEFIK_IP CLOUDFLARED_IP OPENCLAW_GATEWAY_IP
 }
 
@@ -75,6 +78,10 @@ validate_required_vars() {
   for name in "${required[@]}"; do
     [[ -n "${!name:-}" ]] || die "Missing required variable: $name"
   done
+
+  if [[ -z "${ADMIN_SSH_PUBLIC_KEY:-}" && -z "${ADMIN_SSH_PUBLIC_KEY_FILE:-}" ]]; then
+    die "Missing admin SSH key. Set ADMIN_SSH_PUBLIC_KEY or ADMIN_SSH_PUBLIC_KEY_FILE."
+  fi
 }
 
 validate_domain_var() {
@@ -85,17 +92,44 @@ validate_domain_var() {
   [[ "$value" =~ ^([a-z0-9-]+\.)+[a-z]{2,}$ ]] || die "$name has invalid domain format: $value"
 }
 
+validate_boolean_var() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ "$value" =~ ^(true|false)$ ]] || die "$name must be 'true' or 'false', got: $value"
+}
+
+resolve_admin_ssh_public_key() {
+  if [[ -z "${ADMIN_SSH_PUBLIC_KEY:-}" && -n "${ADMIN_SSH_PUBLIC_KEY_FILE:-}" ]]; then
+    require_file "${ADMIN_SSH_PUBLIC_KEY_FILE}"
+    ADMIN_SSH_PUBLIC_KEY="$(tr -d '\r' < "${ADMIN_SSH_PUBLIC_KEY_FILE}")"
+    ADMIN_SSH_PUBLIC_KEY="$(trim_spaces "${ADMIN_SSH_PUBLIC_KEY}")"
+    export ADMIN_SSH_PUBLIC_KEY
+  fi
+}
+
+validate_admin_ssh_public_key() {
+  local key="${ADMIN_SSH_PUBLIC_KEY:-}"
+  [[ -n "$key" ]] || die "ADMIN_SSH_PUBLIC_KEY resolved to empty value"
+  [[ "$key" =~ ^(ssh-(ed25519|rsa)|ecdsa-sha2-nistp[0-9]+)[[:space:]]+[A-Za-z0-9+/=]+([[:space:]].*)?$ ]] || \
+    die "ADMIN_SSH_PUBLIC_KEY is not a valid SSH public key format"
+}
+
 validate_config() {
   validate_required_vars
+  resolve_admin_ssh_public_key
 
   [[ "$ADMIN_USER" == "hendaz" ]] || die "ADMIN_USER must be 'hendaz' (locked decision), got: $ADMIN_USER"
   [[ "$RUNTIME_USER" == "openclaw" ]] || die "RUNTIME_USER must be 'openclaw' (locked decision), got: $RUNTIME_USER"
   [[ "$SSH_PORT" == "1773" ]] || die "SSH_PORT must be 1773 (locked decision), got: $SSH_PORT"
+  [[ "$ADMIN_USER_SHELL" =~ ^/ ]] || die "ADMIN_USER_SHELL must be an absolute shell path"
+  [[ "$RUNTIME_USER_SHELL" =~ ^/ ]] || die "RUNTIME_USER_SHELL must be an absolute shell path"
+  validate_boolean_var REMOVE_DEFAULT_UBUNTU_USER
 
   [[ "$EDGE_NETWORK_NAME" == "openclaw-edge" ]] || die "EDGE_NETWORK_NAME must be openclaw-edge, got: $EDGE_NETWORK_NAME"
 
   validate_domain_var DOMAIN
   validate_domain_var APPS_DOMAIN
+  validate_admin_ssh_public_key
 
   [[ "$BOT_NAME" == "${BOT_NAME,,}" ]] || die "BOT_NAME must be lowercase: $BOT_NAME"
   [[ "$BOT_NAME" =~ ^[a-z0-9-]+$ ]] || die "BOT_NAME has invalid format: $BOT_NAME"
@@ -149,6 +183,11 @@ Configuration summary:
   OPENCLAW_GATEWAY_IP=${OPENCLAW_GATEWAY_IP}
   OPENCLAW_GATEWAY_TOKEN=$(redact_secret "${OPENCLAW_GATEWAY_TOKEN}")
   OPENCLAW_GATEWAY_PASSWORD=$(redact_secret "${OPENCLAW_GATEWAY_PASSWORD}")
+  ADMIN_SSH_PUBLIC_KEY=${ADMIN_SSH_PUBLIC_KEY%% *} ****
+  ADMIN_SSH_PUBLIC_KEY_FILE=${ADMIN_SSH_PUBLIC_KEY_FILE:-<unset>}
+  ADMIN_USER_SHELL=${ADMIN_USER_SHELL}
+  RUNTIME_USER_SHELL=${RUNTIME_USER_SHELL}
+  REMOVE_DEFAULT_UBUNTU_USER=${REMOVE_DEFAULT_UBUNTU_USER}
   REPORT_CHANNEL=${REPORT_CHANNEL:-<unset>}
   REPORT_TARGET=${REPORT_TARGET:-<unset>}
 SUMMARY
