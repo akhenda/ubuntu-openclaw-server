@@ -1,7 +1,8 @@
 SHELL := /bin/bash
 export ANSIBLE_HOME := $(CURDIR)/.ansible
+OPENCLAW_UI_PORT ?= 3000
 
-.PHONY: deps galaxy lint test-docker test-vagrant test-vagrant-integration run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage
+.PHONY: deps galaxy lint test-docker test-vagrant test-vagrant-integration run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage local-openclaw-up local-openclaw-tunnel local-openclaw-down
 
 deps:
 	pip install -r requirements.txt
@@ -39,3 +40,22 @@ run-traefik:
 
 run-homepage:
 	ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/homepage.yml
+
+local-openclaw-up:
+	-molecule destroy -s vagrant-integration
+	molecule create -s vagrant-integration
+	molecule converge -s vagrant-integration -- -e @$(CURDIR)/molecule/vagrant-integration/local-openclaw.vars
+
+local-openclaw-tunnel:
+	@set -euo pipefail; \
+	vagrant_dir="$$(find .ansible/tmp -type f -path "*vagrant-integration/Vagrantfile" -print -quit | xargs -I{} dirname "{}")"; \
+	if [ -z "$$vagrant_dir" ]; then \
+		echo "No vagrant-integration VM found. Run 'make local-openclaw-up' first."; \
+		exit 1; \
+	fi; \
+	echo "Opening tunnel http://127.0.0.1:$(OPENCLAW_UI_PORT) -> VM localhost:$(OPENCLAW_UI_PORT)"; \
+	echo "Press Ctrl+C to close the tunnel."; \
+	(cd "$$vagrant_dir" && vagrant ssh -- -N -L $(OPENCLAW_UI_PORT):127.0.0.1:$(OPENCLAW_UI_PORT))
+
+local-openclaw-down:
+	molecule destroy -s vagrant-integration

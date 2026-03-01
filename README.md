@@ -64,6 +64,49 @@ make test-vagrant
 make test-vagrant-integration
 ```
 
+## Local OpenClaw Gateway Run (Persistent VM)
+
+Use this flow when you want a real local VM run and to open the OpenClaw gateway UI in your browser (not a Molecule `test` run that destroys the VM).
+
+1. Bring up the VM and install OpenClaw:
+
+```bash
+make local-openclaw-up
+```
+
+2. Open a tunnel from your host to the VM gateway:
+
+```bash
+make local-openclaw-tunnel
+```
+
+3. Open:
+
+```text
+http://127.0.0.1:3000
+```
+
+If your gateway port differs, SSH into the VM and check:
+
+```bash
+molecule login -s vagrant-integration -h ubuntu2404-vagrant-integration
+openclaw gateway status
+```
+
+The local profile used by `make local-openclaw-up` is:
+`molecule/vagrant-integration/local-openclaw.vars`
+
+Notes about this local profile:
+- `openclaw_disable_vboxadd_hooks: true` avoids known VirtualBox guest kernel hook failures during upstream OpenClaw apt dist-upgrade.
+- `openclaw_bootstrap_pnpm: true` pre-installs a global `pnpm` binary so release-mode OpenClaw install can run reliably in this VM.
+- SSH stays on port `22` and DevSec hardening is disabled for this local VM convenience run.
+
+4. Tear down when done:
+
+```bash
+make local-openclaw-down
+```
+
 ## Production Run
 
 1. Edit `ansible/inventories/prod/hosts.ini` with your real host/user details.

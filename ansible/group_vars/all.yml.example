@@ -169,6 +169,9 @@ homepage_description: Services dashboard behind Traefik + Cloudflare Access
 # OpenClaw role
 openclaw_enable: false
 openclaw_install_mode: release
+openclaw_ci_test: false
+openclaw_disable_vboxadd_hooks: false
+openclaw_bootstrap_pnpm: false
 openclaw_repo_ref: main
 openclaw_target_dir: /opt/openclaw-ansible
 tailscale_authkey: ""

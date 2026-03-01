@@ -22,6 +22,37 @@
         version: "{{ openclaw_repo_ref }}"
         update: true
 
+    - name: Bootstrap pnpm binary for OpenClaw installer compatibility
+      when: openclaw_bootstrap_pnpm | bool
+      block:
+        - name: Install Node.js and npm bootstrap packages
+          ansible.builtin.apt:
+            name:
+              - nodejs
+              - npm
+            state: present
+            update_cache: true
+
+        - name: Set npm global prefix to /usr/local
+          ansible.builtin.command:
+            argv:
+              - npm
+              - config
+              - set
+              - prefix
+              - /usr/local
+          changed_when: false
+
+        - name: Install pnpm globally for all users
+          ansible.builtin.command:
+            argv:
+              - npm
+              - install
+              - -g
+              - pnpm
+          args:
+            creates: /usr/local/bin/pnpm
+
     - name: Render OpenClaw vars file
       ansible.builtin.template:
         src: openclaw-vars.yml.j2
@@ -29,6 +60,15 @@
         owner: root
         group: root
         mode: "0600"
+
+    - name: Disable VirtualBox guest kernel hooks for local Vagrant compatibility
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kernel/postinst.d/vboxadd
+        - /etc/kernel/postrm.d/vboxadd
+      when: openclaw_disable_vboxadd_hooks | bool
 
     - name: Install OpenClaw Ansible collections on target
       ansible.builtin.command:

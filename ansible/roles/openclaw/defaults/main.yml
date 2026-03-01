@@ -4,6 +4,9 @@ openclaw_install_mode: release
 openclaw_repo_ref: main
 openclaw_target_dir: /opt/openclaw-ansible
 tailscale_authkey: ""  # noqa: var-naming[no-role-prefix]
+openclaw_ci_test: false
+openclaw_disable_vboxadd_hooks: false
+openclaw_bootstrap_pnpm: false
 
 # OpenClaw workspace bootstrap policy for Traefik app routing
 openclaw_manage_bootstrap_policy: true

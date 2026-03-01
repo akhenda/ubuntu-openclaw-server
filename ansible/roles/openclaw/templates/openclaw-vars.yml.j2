@@ -1,4 +1,5 @@
 openclaw_install_mode: {{ openclaw_install_mode | to_json }}
+ci_test: {{ openclaw_ci_test | bool | to_json }}
 {% if tailscale_authkey | default('') | length > 0 %}
 tailscale_authkey: {{ tailscale_authkey | to_json }}
 {% endif %}
