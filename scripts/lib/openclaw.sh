@@ -74,6 +74,18 @@ openclaw_config_root() {
   printf '%s/config' "${OPENCLAW_ROOT_DIR}"
 }
 
+openclaw_cli_wrapper_path() {
+  printf '%s' "/usr/local/bin/openclaw"
+}
+
+openclaw_container_uid() {
+  printf '%s' "${OPENCLAW_CONTAINER_UID:-1000}"
+}
+
+openclaw_container_gid() {
+  printf '%s' "${OPENCLAW_CONTAINER_GID:-1000}"
+}
+
 openclaw_render_config_json() {
   cat <<EOF
 {
@@ -83,6 +95,7 @@ openclaw_render_config_json() {
     }
   },
   "gateway": {
+    "mode": "local",
     "trustedProxies": ["${TRAEFIK_IP}"],
     "allowRealIpFallback": false,
     "auth": {
@@ -105,6 +118,25 @@ openclaw_render_config_json() {
     }
   }
 }
+EOF
+}
+
+openclaw_render_cli_wrapper() {
+  cat <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+OPENCLAW_DIR="${OPENCLAW_ROOT_DIR}"
+COMPOSE_FILE="\${OPENCLAW_DIR}/docker-compose.yml"
+ENV_FILE="\${OPENCLAW_DIR}/.env"
+
+if [[ ! -f "\${COMPOSE_FILE}" || ! -f "\${ENV_FILE}" ]]; then
+  echo "OpenClaw runtime files not found under \${OPENCLAW_DIR}." >&2
+  echo "Run the installer first: make run-install" >&2
+  exit 1
+fi
+
+exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" run --rm openclaw-cli "\$@"
 EOF
 }
 
@@ -295,6 +327,24 @@ openclaw_write_runtime_files() {
   openclaw_write_content_if_changed "${OPENCLAW_POLICY_FILE}" "0644" "${policy_file}" || true
 }
 
+openclaw_fix_runtime_permissions() {
+  local uid gid
+  uid="$(openclaw_container_uid)"
+  gid="$(openclaw_container_gid)"
+
+  log_info "[openclaw] ensuring mounted runtime paths are readable by container user ${uid}:${gid}"
+
+  openclaw_run_root chown -R "${uid}:${gid}" "$(openclaw_config_root)"
+  openclaw_run_root chown -R "${uid}:${gid}" "$(openclaw_workspace_root)"
+  openclaw_run_root chmod 0600 "${OPENCLAW_CONFIG_FILE}"
+}
+
+openclaw_write_cli_wrapper() {
+  local wrapper_content
+  wrapper_content="$(openclaw_render_cli_wrapper)"
+  openclaw_write_content_if_changed "$(openclaw_cli_wrapper_path)" "0755" "${wrapper_content}" || true
+}
+
 openclaw_write_systemd_unit_if_enabled() {
   if [[ "${OPENCLAW_MANAGE_SYSTEMD}" != "true" ]]; then
     log_info "[openclaw] OPENCLAW_MANAGE_SYSTEMD=false; skipping systemd unit management"
@@ -358,6 +408,8 @@ phase_openclaw() {
   openclaw_sync_source_repo
   openclaw_build_image_if_enabled
   openclaw_write_runtime_files
+  openclaw_fix_runtime_permissions
+  openclaw_write_cli_wrapper
   openclaw_start_compose_direct_if_needed
   log_info "[openclaw] OpenClaw runtime setup complete"
 }
