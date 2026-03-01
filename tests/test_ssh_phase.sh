@@ -34,6 +34,7 @@ BOT_NAME=cherry
 TUNNEL_UUID=123e4567-e89b-12d3-a456-426614174000
 CF_ZONE_ID=0123456789abcdef0123456789abcdef
 CF_API_TOKEN=abcdefghijklmnopqrstuvwxyz123456
+TAILSCALE_AUTHKEY=tskey-auth-test-placeholder-0123456789abcdef
 OPENCLAW_GATEWAY_TOKEN=tok_abcdefghijklmnopqrstuvwxyz
 OPENCLAW_GATEWAY_PASSWORD=StrongPass1234!
 ADMIN_USER=hendaz

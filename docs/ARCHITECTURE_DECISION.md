@@ -37,7 +37,7 @@ Success criteria:
 | Source | Strengths adopted | Risks rejected | Modifications required |
 |---|---|---|---|
 | `rarecloud-openclaw-setup` | Loopback gateway/token model; baseline hardening intent; helper script ergonomics; clear post-install UX | Root SSH enabled; default SSH port mismatch; root-centric ops; one-shot convergence model | Keep loopback/token and service bootstrap; enforce SSH `1773` + key-only + no root login; adopt modular/idempotent Bash design |
-| `locryns-vm-linux-hardening-setup` | Strong preflight validation; SSH syntax checks/rollback; key-only/root-deny pattern; DRY_RUN concept; service hardening flags | Always-on public backdoor sshd; Tailscale-only SSH lock as baseline; permissive NOPASSWD defaults | Keep validation/rollback discipline; keep optional DRY_RUN; make emergency access explicit opt-in only; align with our ingress architecture |
+| `locryns-vm-linux-hardening-setup` | Strong preflight validation; SSH syntax checks/rollback; key-only/root-deny pattern; DRY_RUN concept; service hardening flags; Tailscale admin-plane model | Always-on public backdoor sshd; permissive NOPASSWD defaults | Keep validation/rollback discipline; make emergency access explicit opt-in only; adopt Tailscale as mandatory admin-plane while keeping Cloudflare/Traefik app ingress |
 | `stfurkan-claw-easy-setup` | `sshd_config.d` drop-in strategy; SSH-before-firewall ordering; practical baseline controls; systemd linger handling | Password-auth left enabled by default; interactive-first path; forced reboot; root-key copy behavior | Keep drop-in and guard patterns; enforce key-only SSH baseline from first run; make reboot optional and explicit |
 | `mundofacu-openclaw-vm-setup` | VM isolation mindset; temporary elevation then revoke; egress containment concept; swap bootstrap option | Missing host access hardening; manual-heavy post-install; fixed user assumptions | Keep optional isolated-egress profile and swap flags; integrate with full host baseline and non-interactive execution |
 | `eyal050-openclaw-remote-install` | Strong phased orchestration; diagnostics/logging quality; workspace preservation; remote orchestration mechanics | `allowInsecureAuth` default; LAN bind exposure posture; port 22/open gateway firewall defaults; password SSH mode emphasis | Keep phased architecture and diagnostics patterns; enforce secure defaults (loopback-first, strict proxy trust, key-first remote auth); keep helpers as optional modules |
@@ -51,6 +51,7 @@ Success criteria:
 2. Traefik is the single reverse proxy on internal Docker network.
 3. OpenClaw Gateway and all apps are reachable through Traefik host-based routes.
 4. No application container publishes service ports publicly.
+5. Tailscale is the mandatory administrative access plane for operator access and host operations.
 
 ### 4.2 Stack ownership
 1. Edge stack: `/opt/openclaw/edge/docker-compose.yml`
@@ -66,7 +67,9 @@ Success criteria:
 1. Traefik dashboard: `https://traefik.<APPS_DOMAIN>` (must be protected).
 2. OpenClaw UI: `https://<BOT_NAME>.<APPS_DOMAIN>`.
 3. App URL pattern: `https://<appName>.<APPS_DOMAIN>`.
-4. Cloudflare DNS: wildcard preferred; per-host fallback when wildcard cannot be ensured.
+4. Hub URL pattern: `https://hub.<APPS_DOMAIN>` with optional alias `https://apps.<DOMAIN>`.
+5. Hub app cards must click through to each app's real subdomain URL (`https://<appName>.<APPS_DOMAIN>`).
+6. Cloudflare DNS: wildcard preferred; per-host fallback when wildcard cannot be ensured.
 
 ## 5. Security Baseline (non-negotiable)
 1. SSH port is `1773`.
@@ -77,6 +80,7 @@ Success criteria:
 6. `unattended-upgrades` enabled for security updates.
 7. UFW baseline deny incoming/allow outgoing with only explicitly required rules.
 8. No app service may publish `ports:` to `0.0.0.0`.
+9. Tailscale baseline is mandatory for admin-plane connectivity.
 
 Locked user model:
 1. `hendaz` is the admin SSH/sudo operator user.
@@ -100,6 +104,9 @@ Locked user model:
 6. DNS strategy:
    - First try wildcard CNAME: `*.${APPS_DOMAIN}` -> `${TUNNEL_UUID}.cfargotunnel.com` (proxied).
    - Fallback to per-subdomain CNAME upsert if wildcard ensure fails.
+7. Tailscale strategy:
+   - Tailscale must be installed and configured as part of baseline host provisioning.
+   - Tailscale auth is non-optional in production contract (pre-seeded authkey/device-auth flow).
 
 ## 7. Filesystem + Ownership Contract
 Root layout under `/opt/openclaw`:
@@ -126,6 +133,15 @@ Required variables (must fail-fast if missing where applicable):
 4. `TUNNEL_UUID`
 5. `CF_ZONE_ID`
 6. `CF_API_TOKEN`
+7. `TAILSCALE_AUTHKEY`
+
+Hub variables:
+1. `HUB_ENABLE` (locked `true`)
+2. `HUB_AUTOCREATE_ON_FIRST_APP` (locked `true`)
+3. `HUB_PRIMARY_HOST` (default `hub.${APPS_DOMAIN}`)
+4. `HUB_ALIAS_HOST` (default `apps.${DOMAIN}`, optional alias)
+5. `HUB_STYLE_PROFILE`
+6. `HUB_ICON_STRATEGY`
 
 Reporting variables:
 1. `REPORT_OWNER_NAME` (optional; defaults to `Joseph`)
@@ -149,10 +165,12 @@ Default assumptions:
    - Output: creates/updates one CNAME record.
 3. `register_app.py`
    - Inputs: `APP_NAME`, `APP_PORT`, `APPS_DOMAIN` (+ optional `BOT_NAME` reserved-name guard)
-   - Output: deterministic update of `/opt/openclaw/apps/docker-compose.yml`.
+   - Output: deterministic update of `/opt/openclaw/apps/docker-compose.yml` with hub autodiscovery labels and direct app URL metadata.
 4. `deploy_app.sh <appName> <internalPort>`
-   - Behavior: register app, ensure DNS (wildcard preferred), build/start app, emit deployed URL/status.
-5. `report.sh <title> <body>`
+   - Behavior: register app, ensure DNS (wildcard preferred), auto-create hub on first app, build/start app, emit deployed URL/status.
+5. `ensure_hub.sh`
+   - Behavior: create/maintain hub service when first app is onboarded; ensure hub routes and autodiscovery config.
+6. `report.sh <title> <body>`
    - Behavior: send via OpenClaw channel when reporting vars are set; otherwise print to stdout.
 
 ### 8.3 Systemd units expected
@@ -181,6 +199,7 @@ Required policy file contract:
    - Must update global apps compose via helper scripts.
    - Must not publish ports directly.
    - Must deploy through sanctioned flow and validate route health.
+   - Must ensure hub service exists for app discoverability and that hub cards open real subdomain URLs.
    - Must send deployment report to configured owner `${REPORT_OWNER_NAME}` (or stdout fallback when channel not configured).
 
 ## 10. Reporting Contract
@@ -210,6 +229,8 @@ Delivery behavior:
 2. Dual-user model explicitly states `hendaz` admin and `openclaw` runtime separation.
 3. fail2ban and unattended-upgrades are baseline requirements.
 4. No app `ports` publishing is allowed under standard flow.
+5. Tailscale is enabled and configured as mandatory admin plane.
+6. Hub service exists (or is auto-created on first app) and links app cards to real app subdomains.
 
 ### 11.3 Research coverage completeness checks
 1. All eight research sources are present in the matrix.

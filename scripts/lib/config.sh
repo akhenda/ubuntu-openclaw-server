@@ -82,6 +82,16 @@ set_default_config() {
   : "${OPENCLAW_POLICY_FILE:=${OPENCLAW_ROOT_DIR}/workspace/policies/deploy/AGENTS.md}"
   : "${OPENCLAW_POLICY_INJECTION:=true}"
   : "${OPENCLAW_SYSTEMD_UNIT:=/etc/systemd/system/openclaw-gateway.service}"
+  : "${TAILSCALE_ENABLE:=true}"
+  : "${TAILSCALE_AUTHKEY:=}"
+  : "${TAILSCALE_SSH:=true}"
+  : "${TAILSCALE_HOSTNAME:=${BOT_NAME}-${ADMIN_USER}}"
+  : "${HUB_ENABLE:=true}"
+  : "${HUB_AUTOCREATE_ON_FIRST_APP:=true}"
+  : "${HUB_PRIMARY_HOST:=hub.${APPS_DOMAIN}}"
+  : "${HUB_ALIAS_HOST:=apps.${DOMAIN}}"
+  : "${HUB_STYLE_PROFILE:=modern-minimal}"
+  : "${HUB_ICON_STRATEGY:=deterministic-random}"
   : "${APPS_ENABLE:=true}"
   : "${APPS_ROOT_DIR:=${EDGE_ROOT_DIR}/apps}"
   : "${APPS_COMPOSE_FILE:=${APPS_ROOT_DIR}/docker-compose.yml}"
@@ -111,6 +121,8 @@ set_default_config() {
   export OPENCLAW_ENABLE OPENCLAW_ROOT_DIR OPENCLAW_SOURCE_DIR OPENCLAW_SOURCE_REPO OPENCLAW_SOURCE_REF OPENCLAW_IMAGE
   export OPENCLAW_BUILD_IMAGE OPENCLAW_START_STACK OPENCLAW_MANAGE_SYSTEMD OPENCLAW_GATEWAY_PORT
   export OPENCLAW_CONFIG_FILE OPENCLAW_POLICY_FILE OPENCLAW_POLICY_INJECTION OPENCLAW_SYSTEMD_UNIT
+  export TAILSCALE_ENABLE TAILSCALE_AUTHKEY TAILSCALE_SSH TAILSCALE_HOSTNAME
+  export HUB_ENABLE HUB_AUTOCREATE_ON_FIRST_APP HUB_PRIMARY_HOST HUB_ALIAS_HOST HUB_STYLE_PROFILE HUB_ICON_STRATEGY
   export APPS_ENABLE APPS_ROOT_DIR APPS_COMPOSE_FILE APPS_VENV_DIR APPS_REGISTER_SCRIPT APPS_DEPLOY_SCRIPT
   export APPS_SETUP_VENV APPS_VENV_PYTHON
   export VERIFY_ENABLE VERIFY_STRICT
@@ -126,6 +138,7 @@ validate_required_vars() {
     TUNNEL_UUID
     CF_ZONE_ID
     CF_API_TOKEN
+    TAILSCALE_AUTHKEY
     OPENCLAW_GATEWAY_TOKEN
     OPENCLAW_GATEWAY_PASSWORD
   )
@@ -185,6 +198,13 @@ validate_hostname_like_var() {
   [[ -z "${value}" ]] && return 0
   [[ "$value" == "${value,,}" ]] || die "${name} must be lowercase: ${value}"
   [[ "$value" =~ ^([a-z0-9-]+\.)+[a-z]{2,}$ ]] || die "${name} has invalid host format: ${value}"
+}
+
+validate_dns_label_var() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ "$value" == "${value,,}" ]] || die "$name must be lowercase: ${value}"
+  [[ "$value" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || die "$name must be a valid DNS label: ${value}"
 }
 
 validate_non_empty_trimmed_var() {
@@ -247,6 +267,25 @@ validate_config() {
   validate_path_is_absolute OPENCLAW_POLICY_FILE
   validate_path_is_absolute OPENCLAW_SYSTEMD_UNIT
   [[ "${OPENCLAW_POLICY_INJECTION}" == "true" ]] || die "OPENCLAW_POLICY_INJECTION must remain true (locked decision)"
+  validate_boolean_var TAILSCALE_ENABLE
+  validate_boolean_var TAILSCALE_SSH
+  validate_dns_label_var TAILSCALE_HOSTNAME
+  [[ "${TAILSCALE_ENABLE}" == "true" ]] || die "TAILSCALE_ENABLE must remain true (locked requirement)"
+  validate_non_empty_trimmed_var TAILSCALE_AUTHKEY
+  (( ${#TAILSCALE_AUTHKEY} >= 20 )) || die "TAILSCALE_AUTHKEY appears too short"
+  [[ "${TAILSCALE_AUTHKEY}" == tskey-* ]] || log_warn "TAILSCALE_AUTHKEY does not start with 'tskey-'; verify value is correct."
+  validate_boolean_var HUB_ENABLE
+  validate_boolean_var HUB_AUTOCREATE_ON_FIRST_APP
+  [[ "${HUB_ENABLE}" == "true" ]] || die "HUB_ENABLE must remain true (locked requirement)"
+  [[ "${HUB_AUTOCREATE_ON_FIRST_APP}" == "true" ]] || die "HUB_AUTOCREATE_ON_FIRST_APP must remain true (locked requirement)"
+  validate_hostname_like_var HUB_PRIMARY_HOST
+  if [[ -n "${HUB_ALIAS_HOST:-}" ]]; then
+    validate_hostname_like_var HUB_ALIAS_HOST
+  fi
+  [[ "${HUB_STYLE_PROFILE}" =~ ^(modern-minimal|minimal|creative-minimal)$ ]] || \
+    die "HUB_STYLE_PROFILE must be one of: modern-minimal|minimal|creative-minimal"
+  [[ "${HUB_ICON_STRATEGY}" =~ ^(deterministic-random|static|emoji-random)$ ]] || \
+    die "HUB_ICON_STRATEGY must be one of: deterministic-random|static|emoji-random"
   validate_boolean_var APPS_ENABLE
   validate_boolean_var APPS_SETUP_VENV
   validate_path_is_absolute APPS_ROOT_DIR
@@ -362,6 +401,16 @@ Configuration summary:
   OPENCLAW_POLICY_FILE=${OPENCLAW_POLICY_FILE}
   OPENCLAW_POLICY_INJECTION=${OPENCLAW_POLICY_INJECTION}
   OPENCLAW_SYSTEMD_UNIT=${OPENCLAW_SYSTEMD_UNIT}
+  TAILSCALE_ENABLE=${TAILSCALE_ENABLE}
+  TAILSCALE_AUTHKEY=$(redact_secret "${TAILSCALE_AUTHKEY}")
+  TAILSCALE_SSH=${TAILSCALE_SSH}
+  TAILSCALE_HOSTNAME=${TAILSCALE_HOSTNAME}
+  HUB_ENABLE=${HUB_ENABLE}
+  HUB_AUTOCREATE_ON_FIRST_APP=${HUB_AUTOCREATE_ON_FIRST_APP}
+  HUB_PRIMARY_HOST=${HUB_PRIMARY_HOST}
+  HUB_ALIAS_HOST=${HUB_ALIAS_HOST:-<unset>}
+  HUB_STYLE_PROFILE=${HUB_STYLE_PROFILE}
+  HUB_ICON_STRATEGY=${HUB_ICON_STRATEGY}
   APPS_ENABLE=${APPS_ENABLE}
   APPS_ROOT_DIR=${APPS_ROOT_DIR}
   APPS_COMPOSE_FILE=${APPS_COMPOSE_FILE}

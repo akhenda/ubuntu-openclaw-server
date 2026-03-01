@@ -95,9 +95,18 @@ Core required contract:
 4. `TUNNEL_UUID`
 5. `CF_ZONE_ID`
 6. `CF_API_TOKEN`
-7. `OPENCLAW_GATEWAY_TOKEN`
-8. `OPENCLAW_GATEWAY_PASSWORD`
-9. `ADMIN_SSH_PUBLIC_KEY` or `ADMIN_SSH_PUBLIC_KEY_FILE`
+7. `TAILSCALE_AUTHKEY` (mandatory)
+8. `OPENCLAW_GATEWAY_TOKEN`
+9. `OPENCLAW_GATEWAY_PASSWORD`
+10. `ADMIN_SSH_PUBLIC_KEY` or `ADMIN_SSH_PUBLIC_KEY_FILE`
+
+Hub contract defaults:
+
+1. `HUB_ENABLE=true`
+2. `HUB_AUTOCREATE_ON_FIRST_APP=true`
+3. `HUB_PRIMARY_HOST=hub.<APPS_DOMAIN>`
+4. `HUB_ALIAS_HOST=apps.<DOMAIN>` (optional alias)
+5. Hub app cards must link to each app’s real subdomain (`https://<app>.<APPS_DOMAIN>`).
 
 Key locked defaults:
 
