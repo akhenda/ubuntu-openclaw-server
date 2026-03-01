@@ -1,418 +1,152 @@
 # infra-ubuntu-2404-openclaw
 
-Repeatable, idempotent infrastructure automation for **Ubuntu Server 24.04 LTS (noble)** using Ansible.
+Bash-first, idempotent Ubuntu 24.04 server setup toolkit for OpenClaw edge hosting.
 
-This repository bootstraps a fresh host, applies a secure baseline, applies DevSec hardening roles, can manage Cloudflare DNS/SSL settings, can configure Oh My Zsh for your admin user, can deploy a Docker socket proxy, can deploy a Traefik reverse-proxy foundation, can deploy a Homepage hub service, and can optionally install OpenClaw by running `openclaw/openclaw-ansible` **locally on the target host**.
+This repository configures a server to the architecture in [docs/ARCHITECTURE_DECISION.md](docs/ARCHITECTURE_DECISION.md):
 
-## What This Repo Does
+1. Secure host baseline (`hendaz` admin + `openclaw` runtime, SSH on `1773`, firewall baseline)
+2. Cloudflare Tunnel + Traefik edge foundation on `openclaw-edge`
+3. OpenClaw runtime + mandatory workspace policy injection
+4. Global apps registry and deploy helpers
+5. Deployment reporting helper with channel fallback
+6. Post-install verification checks
 
-1. Bootstraps a fresh Ubuntu 24.04 server for Ansible management.
-2. Applies secure baseline configuration:
-- package updates and baseline packages
-- UFW firewall baseline (default deny incoming, allow outgoing, allow SSH)
-- unattended security updates
-- fail2ban for SSH
-- hostname management from config/env
-- custom MOTD with OpenClaw and system status summary
-3. Applies OS + SSH hardening using `devsec.hardening` collection roles:
-- `devsec.hardening.os_hardening`
-- `devsec.hardening.ssh_hardening`
-4. Optionally applies Cloudflare setup:
-- install Cloudflare Origin CA root cert on the server trust store
-- manage Cloudflare DNS records (token/global-key auth)
-- enforce Cloudflare SSL mode (for example `strict`)
-5. Optionally configures Oh My Zsh for the admin user:
-- installs `zsh` and Oh My Zsh
-- installs `guru2` theme
-- enables `git` plugin
-- sets `zsh` as default shell
-6. Optionally deploys Docker socket proxy:
-- deploys `tecnativa/docker-socket-proxy` with restricted Docker API permissions
-- keeps Docker socket off Traefik/Homepage containers by default when enabled
-- publishes proxy port to host only if explicitly enabled
-7. Optionally deploys Traefik foundation:
-- install Docker engine + compose plugin
-- create shared `proxy` docker network
-- deploy Traefik stack on `80/443` with Docker provider `exposedByDefault=false`
-- optionally configure dashboard host and Cloudflare origin cert files
-8. Optionally deploys Homepage hub behind Traefik:
-- deploy Homepage stack at `/opt/homepage`
-- route `hub.<domain>` via Traefik labels on the container
-- use socket proxy endpoint for Homepage Docker integration (or unix socket if socket proxy is disabled)
-9. Optionally installs OpenClaw by cloning and running `openclaw/openclaw-ansible` **on the target host**.
+## Current State
 
-## Controller Prerequisites
+The active automation entrypoint is:
 
-- Python **3.11+** recommended
-- `venv` available
-- Ansible/Molecule tooling installed from `requirements.txt`
-- Docker installed (for Molecule docker scenario)
-- Vagrant + provider installed (VirtualBox or libvirt; default in this repo is VirtualBox)
+- `scripts/install.sh`
 
-## Target Prerequisites
+The installer is modular and runs phases in this order:
 
-- Ubuntu Server **24.04 LTS** reachable via SSH
-- Admin user with sudo privileges
+1. `packages`
+2. `user`
+3. `ssh`
+4. `firewall`
+5. `edge`
+6. `dns`
+7. `openclaw`
+8. `apps`
+9. `report`
+10. `verify`
+
+## Prerequisites
+
+Controller machine:
+
+1. Python 3.11+ (recommended)
+2. `venv`
+3. Optional: tool dependencies from `requirements.txt` for lint/test workflows
+
+Target machine:
+
+1. Ubuntu Server 24.04 LTS
+2. Access with sudo-capable user for first run
 
 ## Quickstart
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-make deps && make galaxy && make lint
-make test-docker
-make test-vagrant
-make test-vagrant-integration
+make deps
+cp config/example.env config/.env
+$EDITOR config/.env
+make check-config
+make test-scripts
+make run-install
 ```
 
-## Local OpenClaw Gateway Run (Persistent VM)
+## Make Targets (Bash Toolkit)
 
-Use this flow when you want a real local VM run and to open the OpenClaw gateway UI in your browser (not a Molecule `test` run that destroys the VM).
+- `make deps`: install Python tooling from `requirements.txt`
+- `make check-config`: validate `config/.env` and print effective config
+- `make run-install`: execute full installer
+- `make test-scripts`: run Bash phase tests
 
-1. Bring up the VM and install OpenClaw:
+You can override the config path:
 
 ```bash
-make local-openclaw-up
+make check-config CONFIG_FILE=/path/to/file.env
+make run-install CONFIG_FILE=/path/to/file.env
 ```
 
-2. Open a tunnel from your host to the VM gateway:
+## Configuration
+
+Copy `config/example.env` to `config/.env` and set your real values.
+
+Core required contract:
+
+1. `DOMAIN`
+2. `APPS_DOMAIN`
+3. `BOT_NAME`
+4. `TUNNEL_UUID`
+5. `CF_ZONE_ID`
+6. `CF_API_TOKEN`
+7. `OPENCLAW_GATEWAY_TOKEN`
+8. `OPENCLAW_GATEWAY_PASSWORD`
+9. `ADMIN_SSH_PUBLIC_KEY` or `ADMIN_SSH_PUBLIC_KEY_FILE`
+
+Key locked defaults:
+
+1. `ADMIN_USER=hendaz`
+2. `RUNTIME_USER=openclaw`
+3. `SSH_PORT=1773`
+4. `EDGE_NETWORK_NAME=openclaw-edge`
+5. `OPENCLAW_POLICY_INJECTION=true`
+
+Reporting owner is configurable:
+
+- `REPORT_OWNER_NAME` (default `Joseph`)
+
+## What Gets Generated
+
+Installer-managed artifacts (default paths):
+
+1. Edge stack:
+- `/opt/openclaw/edge/traefik/traefik.yml`
+- `/opt/openclaw/edge/cloudflared/config.yml`
+- `/opt/openclaw/edge/docker-compose.yml`
+2. DNS helpers:
+- `/opt/openclaw/bin/cf_dns_ensure_wildcard.sh`
+- `/opt/openclaw/bin/cf_dns_upsert_subdomain.sh`
+3. OpenClaw runtime:
+- `/opt/openclaw/openclaw/config/openclaw.json`
+- `/opt/openclaw/openclaw/.env`
+- `/opt/openclaw/openclaw/docker-compose.yml`
+- `/opt/openclaw/openclaw/workspace/policies/deploy/AGENTS.md`
+- `/etc/systemd/system/openclaw-gateway.service` (when enabled)
+4. Apps helpers:
+- `/opt/openclaw/apps/docker-compose.yml`
+- `/opt/openclaw/bin/register_app.py`
+- `/opt/openclaw/bin/deploy_app.sh`
+5. Reporting helper:
+- `/opt/openclaw/bin/report.sh`
+
+## OpenClaw Notes
+
+The toolkit configures OpenClaw to run behind Traefik and injects deployment policy context via `bootstrap-extra-files`.
+
+After first successful install, typical manual next steps are:
+
+1. Bring up/confirm channels and auth in OpenClaw.
+2. Use `openclaw-cli` for dashboard/device/provider setup as needed.
+3. Use generated helpers for app lifecycle and reporting.
+
+## Testing
+
+Script-level tests:
 
 ```bash
-make local-openclaw-tunnel
+make test-scripts
 ```
 
-3. Open:
+These tests are deterministic dry-run checks of each phase contract.
 
-```text
-http://127.0.0.1:3000
-```
+## Legacy Tooling
 
-If your gateway port differs, SSH into the VM and check:
+This repository still contains historical Ansible/Molecule files and some legacy `make` targets (`lint`, `test-docker`, `test-vagrant`, etc.).
 
-```bash
-molecule login -s vagrant-integration -h ubuntu2404-vagrant-integration
-openclaw gateway status
-```
+The authoritative implementation path is now the Bash toolkit under `scripts/` + `config/example.env`.
 
-The local profile used by `make local-openclaw-up` is:
-`molecule/vagrant-integration/local-openclaw.vars`
+## Deferred Work
 
-Notes about this local profile:
-- `openclaw_disable_vboxadd_hooks: true` avoids known VirtualBox guest kernel hook failures during upstream OpenClaw apt dist-upgrade.
-- `openclaw_bootstrap_pnpm: true` pre-installs a global `pnpm` binary so release-mode OpenClaw install can run reliably in this VM.
-- SSH stays on port `22` and DevSec hardening is disabled for this local VM convenience run.
-
-4. Tear down when done:
-
-```bash
-make local-openclaw-down
-```
-
-## Production Run
-
-1. Edit `ansible/inventories/prod/hosts.ini` with your real host/user details.
-2. Copy `ansible/group_vars/all.yml.example` to `ansible/group_vars/all.yml` (this file is gitignored) and set values, or use Ansible Vault.
-3. Run:
-
-```bash
-make run-prod
-```
-
-## SSH and User Model
-
-- SSH hardening defaults:
-  - SSH runs on port `1773`
-  - root login disabled
-  - password login disabled (key-only)
-- Firewall defaults:
-  - deny incoming by default
-  - only configured SSH port(s) are allowed
-  - port `22` is denied when not explicitly allowed
-- Admin user defaults:
-  - created as sudo user from env-configurable values
-  - default Ubuntu bootstrap user (`ubuntu`) can be removed
-
-Environment variables supported by defaults:
-
-- `INFRA_ADMIN_USER`
-- `INFRA_ADMIN_SSH_PUBLIC_KEY`
-- `INFRA_ADMIN_PASSWORD` (optional)
-- `INFRA_ADMIN_PASSWORD_HASH` (optional, preferred over plain password)
-- `INFRA_FQDN` (optional; if set, hostname + hosts mapping are managed)
-- `INFRA_HOST_IP` (optional; override detected primary host IP for `/etc/hosts` + MOTD)
-
-Example:
-
-```bash
-export INFRA_ADMIN_USER=openclaw
-export INFRA_ADMIN_SSH_PUBLIC_KEY=\"ssh-ed25519 AAAA...you@example\"
-```
-
-## Oh My Zsh
-
-The `oh_my_zsh` role configures a consistent shell environment for your admin user.
-
-Behavior:
-
-- installs `zsh`
-- clones Oh My Zsh
-- installs the `guru2` theme
-- installs `z.sh` helper (optional)
-- renders `.zshrc` with `git` plugin
-- sets `/bin/zsh` as default shell
-
-Example:
-
-```yaml
-oh_my_zsh_enable: true
-oh_my_zsh_target_user: "{{ base_admin_user }}"
-oh_my_zsh_theme_name: guru2
-oh_my_zsh_plugins:
-  - git
-```
-
-Run only shell setup:
-
-```bash
-ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/oh_my_zsh.yml
-# or
-make run-shell
-```
-
-## Cloudflare Setup (Traefik-Friendly)
-
-The `cloudflare` role is designed to support hub + wildcard routing patterns like:
-
-- `hub.akhenda.net` -> VPS IP (A record, proxied)
-- `*.akhenda.net` -> `hub.akhenda.net` (CNAME wildcard, proxied)
-- SSL mode forced to `Full (strict)` via Cloudflare API (`cloudflare_ssl_mode: strict`)
-
-Key variables:
-
-- `cloudflare_zone_id`
-- `cloudflare_global_api_key`
-- `cloudflare_dns_api_token` (recommended)
-
-Recommended auth model:
-
-- use `cloudflare_dns_api_token` (Bearer token) instead of global API key
-- if using `cloudflare_global_api_key`, set `cloudflare_email` too
-
-Example:
-
-```yaml
-cloudflare_enable: true
-cloudflare_manage_dns: true
-cloudflare_manage_ssl_mode: true
-cloudflare_ssl_mode: strict
-
-cloudflare_zone_name: akhenda.net
-cloudflare_zone_id: "YOUR_ZONE_ID"
-cloudflare_dns_api_token: "{{ vault_cloudflare_dns_api_token }}"
-
-cloudflare_dns_records:
-  - record: hub
-    type: A
-    value: 185.185.80.175
-    proxied: true
-  - record: "*"
-    type: CNAME
-    value: hub.akhenda.net
-    proxied: true
-```
-
-Cloudflare Access policy setup (`*.akhenda.net` allowlist by email) remains a manual dashboard step and should be applied after DNS/SSL are in place.
-
-Cloudflare Access click-path (dashboard):
-
-1. `Zero Trust` -> `Access` -> `Applications` -> `Add an application`.
-2. Choose `Self-hosted`.
-3. Set `Application domain` to `*.akhenda.net` (or `hub.akhenda.net` first if you prefer phased rollout).
-4. Add an `Allow` policy:
-- Include your approved emails (for example your Google/GitHub identity emails).
-- Keep default deny for everyone else.
-5. Save and test in an incognito browser to confirm authentication is enforced.
-
-## Docker Socket Proxy
-
-The `socket_proxy` role deploys a hardened Docker API proxy for other services that need Docker metadata access.
-
-Behavior:
-
-- deploys stack under `/opt/docker-socket-proxy`
-- runs `tecnativa/docker-socket-proxy`
-- defaults to no host port publishing (`socket_proxy_publish_port: false`)
-- exposes only a constrained set of Docker API endpoints (override with `socket_proxy_env_overrides`)
-
-Example:
-
-```yaml
-socket_proxy_enable: true
-socket_proxy_endpoint: "http://docker-socket-proxy:2375"
-socket_proxy_compose_idempotence_mode: false
-socket_proxy_env_overrides:
-  CONTAINERS: "1"
-  IMAGES: "1"
-  INFO: "1"
-  NETWORKS: "1"
-  EVENTS: "1"
-```
-
-Run only socket proxy:
-
-```bash
-ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/socket_proxy.yml
-# or
-make run-socket-proxy
-```
-
-## Traefik Foundation
-
-The `traefik` role is designed to prepare the VPS for an app-hub model (for example `hub.akhenda.net` and `*.akhenda.net`) without touching existing OpenClaw containers.
-
-Behavior:
-
-- installs Docker + compose plugin and ensures docker service is running
-- adds configured admin user to docker group
-- creates `proxy` network for shared reverse-proxy routing
-- deploys Traefik stack at `/opt/traefik`
-- uses `traefik_docker_endpoint` (socket proxy endpoint by default when enabled)
-- opens UFW `80/443` when firewall management is enabled in this repo
-- supports Cloudflare origin certificate via vars (`traefik_origin_cert_content`, `traefik_origin_key_content`) or pre-existing files under `/opt/traefik/certs`
-
-Example:
-
-```yaml
-traefik_enable: true
-traefik_domain: akhenda.net
-traefik_dashboard_enable: true
-traefik_dashboard_host: traefik.akhenda.net
-traefik_use_origin_cert: true
-traefik_origin_cert_content: "{{ vault_traefik_origin_cert }}"
-traefik_origin_key_content: "{{ vault_traefik_origin_key }}"
-```
-
-Run only Traefik:
-
-```bash
-ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/traefik.yml
-# or
-make run-traefik
-```
-
-## Homepage Hub
-
-The `homepage` role deploys the Homepage dashboard behind Traefik and routes it through `hub.<domain>`.
-
-Behavior:
-
-- deploys stack under `/opt/homepage`
-- uses docker network `proxy` (or your configured Traefik network)
-- adds Traefik labels for `Host(\`hub.<domain>\`)` on `websecure`
-- uses `homepage_docker_proxy_endpoint` for Docker integration (socket proxy by default when enabled)
-
-Example:
-
-```yaml
-homepage_enable: true
-homepage_domain: akhenda.net
-homepage_host: hub.akhenda.net
-```
-
-Run only Homepage:
-
-```bash
-ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/homepage.yml
-# or
-make run-homepage
-```
-
-Reusable app compose snippet (for OpenClaw-generated or custom services):
-
-```yaml
-services:
-  myapp:
-    image: ghcr.io/acme/myapp:latest
-    networks:
-      - proxy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=proxy"
-      - "traefik.http.routers.myapp.rule=Host(`myapp.akhenda.net`)"
-      - "traefik.http.routers.myapp.entrypoints=websecure"
-      - "traefik.http.routers.myapp.tls=true"
-      - "traefik.http.services.myapp.loadbalancer.server.port=3000"
-
-networks:
-  proxy:
-    external: true
-```
-
-## OpenClaw Behavior
-
-When `openclaw_enable: true`, the `openclaw` role:
-
-1. Installs prerequisites on the target host (`git`, `ansible-core`).
-2. Clones `openclaw/openclaw-ansible` to `/opt/openclaw-ansible` (default).
-3. Runs `ansible-galaxy collection install -r requirements.yml` in that directory.
-4. Runs `ansible-playbook playbook.yml -e @openclaw-vars.yml` in that directory as root.
-5. Optionally manages OpenClaw bootstrap policy files in the OpenClaw workspace and configures the `bootstrap-extra-files` hook so OpenClaw always receives Traefik routing guardrails.
-
-At a high level, OpenClaw installer can set up components such as optional Tailscale, UFW + fail2ban + unattended-upgrades, Docker, Node/pnpm, and an OpenClaw systemd service.
-
-### OpenClaw Traefik Policy Injection
-
-When `openclaw_manage_bootstrap_policy: true` (default), this repo:
-
-- creates policy files at `~/.openclaw/workspace/bootstrap/openclaw-traefik/AGENTS.md` and `SOUL.md` for `openclaw_cli_user`
-- configures OpenClaw workspace path to `~/.openclaw/workspace`
-- enables `hooks.internal.entries.bootstrap-extra-files`
-- sets hook paths to:
-  - `bootstrap/openclaw-traefik/AGENTS.md`
-  - `bootstrap/openclaw-traefik/SOUL.md`
-
-This gives OpenClaw a repeatable routing contract for Traefik labels/networking whenever new app tasks are bootstrapped.
-
-You can validate on target:
-
-```bash
-openclaw config get agents.defaults.workspace
-openclaw config get hooks.internal.entries.bootstrap-extra-files.enabled
-openclaw config get hooks.internal.entries.bootstrap-extra-files.paths
-openclaw hooks check
-```
-
-## Post-Install Manual Steps (Human)
-
-This repo does **not** run interactive onboarding. After installation, connect to the server and run the OpenClaw CLI/manual steps you need, for example:
-
-- `openclaw configure`
-- provider logins/auth flows
-- optional `openclaw onboard`
-
-## Secrets and Safe Variables
-
-- Example shared vars live in `ansible/group_vars/all.yml.example`.
-- Keep real secrets (for example `tailscale_authkey`) in:
-  - `ansible/group_vars/all.yml` (gitignored), or
-  - encrypted Ansible Vault files.
-
-Example Vault usage:
-
-```bash
-ansible-vault create ansible/group_vars/vault.yml
-ansible-playbook -i ansible/inventories/prod/hosts.ini ansible/playbooks/site.yml --ask-vault-pass
-```
-
-## Molecule Scenarios
-
-- `docker` scenario: quick base role checks on `ubuntu:24.04` container.
-- `vagrant` scenario: full `site.yml` (with `openclaw_enable=false`) on Ubuntu 24.04 VM.
-- `vagrant-integration` scenario: full `site.yml` with optional roles enabled (`socket_proxy`, `traefik`, `homepage`, `oh_my_zsh`) plus SSH/firewall policy checks (`1773` allowed, `22` denied).
-
-`openclaw_enable` defaults to `false` so Molecule runs are deterministic.
-
-Idempotence and lock-handling notes:
-
-- All role wrapper playbooks set `ansible.builtin.apt` `lock_timeout` via `module_defaults`; default is `apt_lock_timeout=300` seconds.
-- `vagrant-integration` sets `os_sysctl_enabled: false` and `os_chmod_home_folders: false` to avoid known non-idempotent behavior in upstream `devsec.hardening.os_hardening` on ephemeral VMs.
-- `vagrant-integration` sets `socket_proxy_compose_idempotence_mode: true` so the socket proxy compose step does not fail Molecule idempotence checks due to Docker Compose v2 changed reporting.
+- Multi-instance support on one host (planned future feature)
