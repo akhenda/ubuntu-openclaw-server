@@ -266,7 +266,9 @@ edge_write_configs() {
   fi
 
   if [[ -n "${TRAEFIK_DASHBOARD_USERS:-}" ]]; then
-    local users_content="TRAEFIK_DASH_USERS='${TRAEFIK_DASHBOARD_USERS}'"
+    # basicauth.usersfile expects raw htpasswd lines (not KEY=VALUE).
+    # Allow config values escaped as $$ and normalize back to single $.
+    local users_content="${TRAEFIK_DASHBOARD_USERS//\$\$/\$}"
     if edge_write_content_if_changed "$(edge_dashboard_users_file)" "0600" "${users_content}"; then
       changed="true"
     fi

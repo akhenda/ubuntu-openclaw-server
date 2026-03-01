@@ -64,7 +64,7 @@ set_default_config() {
   : "${EDGE_ROOT_DIR:=/opt/openclaw}"
   : "${EDGE_START_STACK:=true}"
   : "${EDGE_REQUIRE_TUNNEL_CREDENTIALS:=true}"
-  : "${TRAEFIK_IMAGE:=traefik:v3.0}"
+  : "${TRAEFIK_IMAGE:=traefik:v3.5}"
   : "${CLOUDFLARED_IMAGE:=cloudflare/cloudflared:latest}"
   : "${TRAEFIK_DASHBOARD_HOST:=traefik.${APPS_DOMAIN}}"
   : "${TRAEFIK_DASHBOARD_USERS:=}"
