@@ -104,6 +104,30 @@ SSHEOF
   bash -c "source '$ROOT_DIR/scripts/lib/ssh.sh'; SSH_PORT=1773; ADMIN_USER=hendaz; ssh_render_hardening_dropin" > "$tmp_dir/sshd_config.d/99-openclaw-hardening.conf"
 }
 
+test_motd_render_script_syntax_contract() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/motd.sh'; SSH_PORT=1773; motd_render_script")"
+
+  if grep -Fq '\\"' <<<"$rendered"; then
+    echo "Assertion failed: rendered MOTD script contains escaped quotes that break awk" >&2
+    echo "--- rendered ---" >&2
+    printf '%s\n' "$rendered" >&2
+    exit 1
+  fi
+
+  if ! grep -Fq 'awk '\''/Mem:/ {print $3 "/" $2}'\''' <<<"$rendered"; then
+    echo "Assertion failed: rendered MOTD script missing safe RAM awk expression" >&2
+    printf '%s\n' "$rendered" >&2
+    exit 1
+  fi
+
+  if ! grep -Fq "printf -- '- SSH: port 1773, root login disabled, password auth disabled\\n'" <<<"$rendered"; then
+    echo "Assertion failed: rendered MOTD script missing safe printf -- security notice line" >&2
+    printf '%s\n' "$rendered" >&2
+    exit 1
+  fi
+}
+
 test_motd_phase_dry_run_writes_status_script() {
   local tmp_dir
   tmp_dir="$(mktemp -d)"
@@ -158,6 +182,7 @@ test_motd_phase_can_be_disabled() {
 }
 
 main() {
+  test_motd_render_script_syntax_contract
   test_motd_phase_dry_run_writes_status_script
   test_motd_phase_can_be_disabled
   echo "PASS: test_motd_phase.sh"
