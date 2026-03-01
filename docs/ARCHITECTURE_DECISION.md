@@ -55,7 +55,7 @@ Success criteria:
 
 ### 4.2 Stack ownership
 1. Edge stack: `/opt/openclaw/edge/docker-compose.yml`
-   - Contains only shared edge services (`traefik`, `cloudflared`).
+   - Contains only shared edge services (`traefik`, `cloudflared`, and `docker-socket-proxy` when enabled).
    - Immutable for app onboarding flows.
 2. OpenClaw runtime stack: `/opt/openclaw/openclaw/docker-compose.yml`
    - Contains gateway + CLI/admin service.
@@ -97,6 +97,7 @@ Locked user model:
 4. Reserved hostnames/app names:
    - `traefik`
    - `${BOT_NAME}`
+   - `hub`
 5. OpenClaw proxy safety:
    - `gateway.trustedProxies` must include `172.30.0.2`.
    - `gateway.allowRealIpFallback` must be `false`.

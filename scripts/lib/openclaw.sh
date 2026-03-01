@@ -177,9 +177,10 @@ openclaw_render_policy_agents_md() {
 Never create an app named:
 - traefik
 - ${BOT_NAME}
+- hub
 
 ## Global stack + global apps compose
-- The edge stack runs at: ${EDGE_ROOT_DIR}/edge/docker-compose.yml (Traefik + cloudflared). Do NOT modify it when adding apps.
+- The edge stack runs at: ${EDGE_ROOT_DIR}/edge/docker-compose.yml (Traefik + cloudflared + docker-socket-proxy when enabled). Do NOT modify it when adding apps.
 - All apps must be added to the GLOBAL APPS COMPOSE:
   ${EDGE_ROOT_DIR}/apps/docker-compose.yml
 
