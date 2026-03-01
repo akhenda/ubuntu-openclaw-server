@@ -3,7 +3,7 @@
 edge_run_root() {
   if (( EUID == 0 )); then
     run_cmd "$@"
-    return 0
+    return $?
   fi
 
   command_exists sudo || die "[edge] sudo is required when not running as root"
@@ -126,10 +126,17 @@ edge_ensure_directories() {
 }
 
 edge_render_traefik_config() {
+  local docker_endpoint=""
+  if [[ "${SOCKET_PROXY_ENABLE}" == "true" ]]; then
+    local endpoint_hostport="${SOCKET_PROXY_ENDPOINT#http://}"
+    endpoint_hostport="${endpoint_hostport#https://}"
+    docker_endpoint=$'\n    endpoint: "tcp://'"${endpoint_hostport}"'"'
+  fi
+
   cat <<EOF
 providers:
   docker:
-    exposedByDefault: false
+    exposedByDefault: false${docker_endpoint}
 
 entryPoints:
   web:
@@ -156,6 +163,39 @@ EOF
 edge_render_compose() {
   local dashboard_labels=""
   local dashboard_volume=""
+  local socket_proxy_service=""
+  local traefik_socket_depends_on=""
+  local traefik_docker_socket_volume=$'\n      - /var/run/docker.sock:/var/run/docker.sock:ro'
+
+  if [[ "${SOCKET_PROXY_ENABLE}" == "true" ]]; then
+    traefik_docker_socket_volume=""
+    traefik_socket_depends_on=$'\n    depends_on:\n      - docker-socket-proxy'
+    socket_proxy_service="$(cat <<EOF
+  docker-socket-proxy:
+    image: ${SOCKET_PROXY_IMAGE}
+    environment:
+      CONTAINERS: 1
+      SERVICES: 1
+      TASKS: 1
+      NETWORKS: 1
+      POST: 0
+      AUTH: 0
+      VOLUMES: 0
+      IMAGES: 0
+      EXEC: 0
+      PING: 1
+      VERSION: 1
+      INFO: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      ${EDGE_NETWORK_NAME}:
+        ipv4_address: ${SOCKET_PROXY_IP}
+    restart: unless-stopped
+
+EOF
+)"
+  fi
 
   if [[ -n "${TRAEFIK_DASHBOARD_USERS:-}" ]]; then
     dashboard_volume=$'\n      - '"$(edge_dashboard_users_file):/run/secrets/traefik_dashboard_users.env:ro"
@@ -175,8 +215,7 @@ services:
     command:
       - --configFile=/etc/traefik/traefik.yml
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro${dashboard_volume}
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro${traefik_docker_socket_volume}${dashboard_volume}${traefik_socket_depends_on}
     networks:
       ${EDGE_NETWORK_NAME}:
         ipv4_address: ${TRAEFIK_IP}
@@ -193,6 +232,7 @@ $( [[ -n "${dashboard_labels}" ]] && printf '    labels:%s\n' "${dashboard_label
       ${EDGE_NETWORK_NAME}:
         ipv4_address: ${CLOUDFLARED_IP}
     restart: unless-stopped
+${socket_proxy_service}
 
 networks:
   ${EDGE_NETWORK_NAME}:
