@@ -318,6 +318,8 @@ openclaw_fix_runtime_permissions() {
   log_info "[openclaw] ensuring runtime paths are owned by ${RUNTIME_USER}"
   openclaw_run_root install -d -m 0700 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${runtime_home}/.openclaw"
   openclaw_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "$(dirname "${OPENCLAW_POLICY_FILE}")"
+  openclaw_run_root chown "root:${RUNTIME_USER}" "$(openclaw_env_file_path)"
+  openclaw_run_root chmod 0640 "$(openclaw_env_file_path)"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_CONFIG_FILE}"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_POLICY_FILE}"
   openclaw_run_root chmod 0600 "${OPENCLAW_CONFIG_FILE}"
