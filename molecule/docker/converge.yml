@@ -52,10 +52,12 @@
           CF_ZONE_ID=0123456789abcdef0123456789abcdef
           CF_API_TOKEN=abcdefghijklmnopqrstuvwxyz123456
           TAILSCALE_AUTHKEY=tskey-auth-test-placeholder-0123456789abcdef
+          TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY=true
           OPENCLAW_GATEWAY_TOKEN=tok_abcdefghijklmnopqrstuvwxyz
           OPENCLAW_GATEWAY_PASSWORD=StrongPass1234!
           ADMIN_USER=hendaz
           RUNTIME_USER=openclaw
+          HOST_FQDN=node.akhenda.net
           SSH_PORT=1773
           ADMIN_USER_SHELL=/bin/bash
           RUNTIME_USER_SHELL=/bin/bash
@@ -66,6 +68,8 @@
           DNS_ENABLE=false
           OPENCLAW_ENABLE=false
           APPS_ENABLE=false
+          MOTD_ENABLE=false
+          OH_MY_ZSH_ENABLE=false
           REPORT_ENABLE=false
           VERIFY_ENABLE=false
           EDGE_NETWORK_NAME=openclaw-edge

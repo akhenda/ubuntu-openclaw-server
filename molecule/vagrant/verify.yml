@@ -20,8 +20,11 @@
         that:
           - "'[packages] prerequisites complete' in (install_log.content | b64decode)"
           - "'[user] dual-user setup complete' in (install_log.content | b64decode)"
+          - "'[tailscale] tailscale baseline complete' in (install_log.content | b64decode)"
+          - "'[socket-proxy] socket proxy is enabled; edge phase will deploy docker-socket-proxy' in (install_log.content | b64decode)"
+          - "'[systemd] stack lifecycle unit management complete' in (install_log.content | b64decode)"
           - "'[ssh] no sshd config changes detected' in (install_log.content | b64decode)"
-          - "'[verify] verification checks passed' in (install_log.content | b64decode)"
+          - "'[verify] VERIFY_ENABLE=false; skipping verification checks' in (install_log.content | b64decode)"
         fail_msg: "Installer log is missing expected live-run checkpoints."
 
     - name: Ensure admin user exists
@@ -85,6 +88,82 @@
           - "'PasswordAuthentication no' in (ssh_dropin.content | b64decode)"
           - "'AllowUsers hendaz' in (ssh_dropin.content | b64decode)"
 
+    - name: Check hostname contract
+      ansible.builtin.command:
+        argv:
+          - hostnamectl
+          - --static
+      changed_when: false
+      register: hostname_static
+
+    - name: Assert hostname was configured from env contract
+      ansible.builtin.assert:
+        that:
+          - "hostname_static.stdout == 'node.akhenda.net'"
+
+    - name: Check timezone contract
+      ansible.builtin.command:
+        argv:
+          - timedatectl
+          - show
+          - --property=Timezone
+          - --value
+      changed_when: false
+      register: timezone_value
+
+    - name: Assert timezone was configured
+      ansible.builtin.assert:
+        that:
+          - "timezone_value.stdout == 'Africa/Nairobi'"
+
+    - name: Verify fail2ban service is enabled
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-enabled
+          - fail2ban
+      changed_when: false
+      register: fail2ban_enabled
+
+    - name: Verify fail2ban service is active
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - fail2ban
+      changed_when: false
+      register: fail2ban_active
+
+    - name: Assert fail2ban runtime state
+      ansible.builtin.assert:
+        that:
+          - "fail2ban_enabled.stdout == 'enabled'"
+          - "fail2ban_active.stdout == 'active'"
+
+    - name: Verify unattended-upgrades service is enabled
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-enabled
+          - unattended-upgrades
+      changed_when: false
+      register: unattended_enabled
+
+    - name: Verify unattended-upgrades service state
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - unattended-upgrades
+      changed_when: false
+      register: unattended_active
+
+    - name: Assert unattended-upgrades runtime state
+      ansible.builtin.assert:
+        that:
+          - "unattended_enabled.stdout == 'enabled'"
+          - "unattended_active.stdout in ['active', 'inactive']"
+
     - name: Ensure docker is installed
       ansible.builtin.command:
         argv:
@@ -111,3 +190,95 @@
           - --config
           - "{{ remote_env_file }}"
       changed_when: false
+
+    - name: Verify tailscale package is installed
+      ansible.builtin.command:
+        argv:
+          - dpkg-query
+          - -W
+          - -f=${Status}
+          - tailscale
+      changed_when: false
+      register: tailscale_pkg
+
+    - name: Assert tailscale package status
+      ansible.builtin.assert:
+        that:
+          - "'install ok installed' in tailscale_pkg.stdout"
+
+    - name: Verify tailscaled service is active
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - tailscaled
+      changed_when: false
+      register: tailscaled_active
+
+    - name: Assert tailscaled service is active
+      ansible.builtin.assert:
+        that:
+          - "tailscaled_active.stdout == 'active'"
+
+    - name: Read generated edge compose file
+      ansible.builtin.slurp:
+        path: /opt/openclaw/edge/docker-compose.yml
+      register: edge_compose
+
+    - name: Assert socket proxy is wired in edge compose
+      ansible.builtin.assert:
+        that:
+          - "'docker-socket-proxy:' in (edge_compose.content | b64decode)"
+          - "'/var/run/docker.sock:/var/run/docker.sock:ro' in (edge_compose.content | b64decode)"
+
+    - name: Read generated Traefik static config
+      ansible.builtin.slurp:
+        path: /opt/openclaw/edge/traefik/traefik.yml
+      register: traefik_cfg
+
+    - name: Assert Traefik uses socket proxy endpoint
+      ansible.builtin.assert:
+        that:
+          - "'endpoint: \"tcp://docker-socket-proxy:2375\"' in (traefik_cfg.content | b64decode)"
+
+    - name: Ensure sample app directory exists
+      ansible.builtin.file:
+        path: /opt/openclaw/apps/sample
+        state: directory
+        mode: "0755"
+
+    - name: Ensure edge docker network exists for app deployment
+      ansible.builtin.shell: >-
+        docker network inspect openclaw-edge >/dev/null 2>&1
+        || docker network create --subnet 172.30.0.0/24 openclaw-edge
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Create sample app Dockerfile
+      ansible.builtin.copy:
+        dest: /opt/openclaw/apps/sample/Dockerfile
+        mode: "0644"
+        content: |
+          FROM nginx:alpine
+          RUN printf 'sample app from molecule\n' > /usr/share/nginx/html/index.html
+
+    - name: Deploy sample app via generated helper
+      ansible.builtin.command:
+        argv:
+          - /opt/openclaw/bin/deploy_app.sh
+          - sample
+          - "80"
+      changed_when: false
+
+    - name: Read generated apps compose file
+      ansible.builtin.slurp:
+        path: /opt/openclaw/apps/docker-compose.yml
+      register: apps_compose
+
+    - name: Assert hub service auto-created and sample labels are correct
+      ansible.builtin.assert:
+        that:
+          - "'hub:' in (apps_compose.content | b64decode)"
+          - "'homepage.href=https://sample.example.com' in (apps_compose.content | b64decode)"
+          - "'traefik.http.routers.hub.rule=' in (apps_compose.content | b64decode)"
