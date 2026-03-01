@@ -136,7 +136,25 @@ if [[ ! -f "\${COMPOSE_FILE}" || ! -f "\${ENV_FILE}" ]]; then
   exit 1
 fi
 
-exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" run --rm openclaw-cli "\$@"
+# Primary path: run CLI inside the already-running gateway container so
+# loopback gateway targets resolve correctly.
+if docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" ps --status running --services | grep -qx 'openclaw-gateway'; then
+  if [[ -t 0 && -t 1 ]]; then
+    exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" exec openclaw-gateway node dist/index.js "\$@"
+  fi
+  exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" exec -T openclaw-gateway node dist/index.js "\$@"
+fi
+
+# Fallback: run CLI sidecar and force gateway service DNS target.
+if [[ -t 0 && -t 1 ]]; then
+  exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" run --rm \
+    -e OPENCLAW_GATEWAY_URL=ws://openclaw-gateway:${OPENCLAW_GATEWAY_PORT} \
+    openclaw-cli "\$@"
+fi
+
+exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" run --rm -T \
+  -e OPENCLAW_GATEWAY_URL=ws://openclaw-gateway:${OPENCLAW_GATEWAY_PORT} \
+  openclaw-cli "\$@"
 EOF
 }
 
