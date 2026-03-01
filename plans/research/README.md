@@ -1,5 +1,8 @@
 # Research Folder Convention
 
+Canonical synthesis output from these research artifacts lives in:
+`docs/ARCHITECTURE_DECISION.md`
+
 Each external reference goes in its own folder:
 
 - `plans/research/<source-name>/analysis.md`

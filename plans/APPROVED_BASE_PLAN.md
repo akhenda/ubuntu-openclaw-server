@@ -2,6 +2,8 @@
 
 Status: Approved by user.
 
+Canonical architecture decision: `docs/ARCHITECTURE_DECISION.md`.
+
 ## Objective
 
 Build a modular, testable, Bash-first automation toolkit for Ubuntu Server 24.04 that provisions a secure OpenClaw host with optional Cloudflare, Traefik, socket proxy, MOTD observability, and operator ergonomics.

@@ -1,5 +1,8 @@
 # Project Handover: infra-ubuntu-2404-openclaw
 
+Canonical architecture decision (current source of truth): `docs/ARCHITECTURE_DECISION.md`.
+This handover document remains as historical context from the Ansible-first phase.
+
 ## 1. Project Identity
 
 - Repository name: `infra-ubuntu-2404-openclaw`
@@ -322,4 +325,3 @@ If another agent is recreating/continuing this project, they must:
 - Keep secrets out of git.
 - Prefer variable-driven behavior over ad-hoc hardcoding.
 - Isolate local-development workarounds in local profile variables.
-
