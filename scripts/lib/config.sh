@@ -82,6 +82,7 @@ set_default_config() {
   : "${OPENCLAW_POLICY_FILE:=${OPENCLAW_ROOT_DIR}/workspace/policies/deploy/AGENTS.md}"
   : "${OPENCLAW_POLICY_INJECTION:=true}"
   : "${OPENCLAW_SYSTEMD_UNIT:=/etc/systemd/system/openclaw-gateway.service}"
+  : "${REPORT_OWNER_NAME:=Joseph}"
 
   : "${EDGE_NETWORK_NAME:=openclaw-edge}"
   : "${EDGE_SUBNET:=172.30.0.0/24}"
@@ -97,6 +98,7 @@ set_default_config() {
   export OPENCLAW_ENABLE OPENCLAW_ROOT_DIR OPENCLAW_SOURCE_DIR OPENCLAW_SOURCE_REPO OPENCLAW_SOURCE_REF OPENCLAW_IMAGE
   export OPENCLAW_BUILD_IMAGE OPENCLAW_START_STACK OPENCLAW_MANAGE_SYSTEMD OPENCLAW_GATEWAY_PORT
   export OPENCLAW_CONFIG_FILE OPENCLAW_POLICY_FILE OPENCLAW_POLICY_INJECTION OPENCLAW_SYSTEMD_UNIT
+  export REPORT_OWNER_NAME
   export EDGE_NETWORK_NAME EDGE_SUBNET TRAEFIK_IP CLOUDFLARED_IP OPENCLAW_GATEWAY_IP
 }
 
@@ -169,6 +171,14 @@ validate_hostname_like_var() {
   [[ "$value" =~ ^([a-z0-9-]+\.)+[a-z]{2,}$ ]] || die "${name} has invalid host format: ${value}"
 }
 
+validate_non_empty_trimmed_var() {
+  local name="$1"
+  local value="${!name:-}"
+  local trimmed
+  trimmed="$(trim_spaces "${value}")"
+  [[ -n "${trimmed}" ]] || die "${name} must not be empty"
+}
+
 resolve_admin_ssh_public_key() {
   if [[ -z "${ADMIN_SSH_PUBLIC_KEY:-}" && -n "${ADMIN_SSH_PUBLIC_KEY_FILE:-}" ]]; then
     require_file "${ADMIN_SSH_PUBLIC_KEY_FILE}"
@@ -221,6 +231,7 @@ validate_config() {
   validate_path_is_absolute OPENCLAW_POLICY_FILE
   validate_path_is_absolute OPENCLAW_SYSTEMD_UNIT
   [[ "${OPENCLAW_POLICY_INJECTION}" == "true" ]] || die "OPENCLAW_POLICY_INJECTION must remain true (locked decision)"
+  validate_non_empty_trimmed_var REPORT_OWNER_NAME
   if [[ -n "${CLOUDFLARED_CREDENTIALS_FILE:-}" ]]; then
     validate_path_is_absolute CLOUDFLARED_CREDENTIALS_FILE
   fi
@@ -323,6 +334,7 @@ Configuration summary:
   OPENCLAW_POLICY_FILE=${OPENCLAW_POLICY_FILE}
   OPENCLAW_POLICY_INJECTION=${OPENCLAW_POLICY_INJECTION}
   OPENCLAW_SYSTEMD_UNIT=${OPENCLAW_SYSTEMD_UNIT}
+  REPORT_OWNER_NAME=${REPORT_OWNER_NAME}
   REPORT_CHANNEL=${REPORT_CHANNEL:-<unset>}
   REPORT_TARGET=${REPORT_TARGET:-<unset>}
 SUMMARY

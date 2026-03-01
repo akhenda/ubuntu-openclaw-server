@@ -193,7 +193,7 @@ You MUST do all of the following:
 4. Register + deploy using:
    ${EDGE_ROOT_DIR}/bin/deploy_app.sh <appName> <port>
 5. Validate app health and routing.
-6. Send Joseph a deployment report using:
+6. Send ${REPORT_OWNER_NAME} a deployment report using:
    ${EDGE_ROOT_DIR}/bin/report.sh "<title>" "<body>"
 
 ## Never publish ports

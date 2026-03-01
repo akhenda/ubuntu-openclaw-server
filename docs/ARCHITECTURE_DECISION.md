@@ -180,10 +180,10 @@ Required policy file contract:
    - Must update global apps compose via helper scripts.
    - Must not publish ports directly.
    - Must deploy through sanctioned flow and validate route health.
-   - Must send deployment report to Joseph (or stdout fallback when channel not configured).
+   - Must send deployment report to configured owner `${REPORT_OWNER_NAME}` (or stdout fallback when channel not configured).
 
 ## 10. Reporting Contract
-Deployment report target: Joseph.
+Deployment report owner: `${REPORT_OWNER_NAME}`.
 
 Report schema requirements:
 1. App name
