@@ -12,16 +12,23 @@ openclaw_run_root() {
 
 openclaw_run_as_runtime() {
   local runtime_home
+  local runtime_path
+  local shell_cmd=""
+  local arg
   runtime_home="$(openclaw_runtime_home)"
+  runtime_path="${OPENCLAW_NPM_PREFIX}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
   if ! command_exists sudo; then
     die "[openclaw] sudo is required to run commands as ${RUNTIME_USER}"
   fi
 
-  run_cmd sudo -u "${RUNTIME_USER}" -H env \
-    HOME="${runtime_home}" \
-    PATH="${OPENCLAW_NPM_PREFIX}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-    "$@"
+  for arg in "$@"; do
+    shell_cmd+=" $(printf '%q' "${arg}")"
+  done
+  shell_cmd="${shell_cmd# }"
+
+  run_cmd sudo -u "${RUNTIME_USER}" -H /bin/bash -lc \
+    "cd $(printf '%q' "${runtime_home}") && export HOME=$(printf '%q' "${runtime_home}") && export PATH=$(printf '%q' "${runtime_path}") && ${shell_cmd}"
 }
 
 openclaw_runtime_home() {
@@ -251,6 +258,9 @@ openclaw_sync_source_repo() {
 
 openclaw_install_cli() {
   log_info "[openclaw] installing OpenClaw CLI (${OPENCLAW_NPM_PACKAGE}@${OPENCLAW_NPM_VERSION}) for ${RUNTIME_USER}"
+  # Normalize GitHub git transport to HTTPS so npm git deps do not require SSH keys.
+  openclaw_run_as_runtime git config --global url.https://github.com/.insteadOf ssh://git@github.com/
+  openclaw_run_as_runtime git config --global --add url.https://github.com/.insteadOf git@github.com:
   openclaw_run_as_runtime npm config set prefix "${OPENCLAW_NPM_PREFIX}"
   openclaw_run_as_runtime npm install -g "${OPENCLAW_NPM_PACKAGE}@${OPENCLAW_NPM_VERSION}"
 
