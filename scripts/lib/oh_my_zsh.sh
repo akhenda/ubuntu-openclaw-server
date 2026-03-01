@@ -10,6 +10,37 @@ oh_my_zsh_run_root() {
   run_cmd sudo "$@"
 }
 
+oh_my_zsh_run_as_admin() {
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    if (( EUID == 0 )); then
+      run_cmd sudo -H -u "${ADMIN_USER}" "$@"
+    else
+      run_cmd "$@"
+    fi
+    return 0
+  fi
+
+  if (( EUID == 0 )); then
+    if command_exists sudo; then
+      run_cmd sudo -H -u "${ADMIN_USER}" "$@"
+      return $?
+    fi
+    if command_exists runuser; then
+      run_cmd runuser -u "${ADMIN_USER}" -- "$@"
+      return $?
+    fi
+    die "[oh-my-zsh] cannot switch to ${ADMIN_USER}; install sudo or runuser"
+  fi
+
+  if [[ "$(id -un)" == "${ADMIN_USER}" ]]; then
+    run_cmd "$@"
+    return $?
+  fi
+
+  command_exists sudo || die "[oh-my-zsh] sudo is required when not running as ${ADMIN_USER}"
+  run_cmd sudo -H -u "${ADMIN_USER}" "$@"
+}
+
 oh_my_zsh_home() {
   local user_name="$1"
   if command_exists getent; then
@@ -101,19 +132,25 @@ phase_oh_my_zsh() {
   oh_my_zsh_run_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zsh
 
   local ohmyzsh_dir="${user_home}/.oh-my-zsh"
+  oh_my_zsh_run_root install -d -m 0755 -o "${ADMIN_USER}" -g "${ADMIN_USER}" "${user_home}"
+  if [[ -d "${ohmyzsh_dir}" ]]; then
+    # Repair ownership from previous failed runs before git operations.
+    oh_my_zsh_run_root chown -R "${ADMIN_USER}:${ADMIN_USER}" "${ohmyzsh_dir}"
+  fi
+
   if [[ -d "${ohmyzsh_dir}/.git" ]]; then
-    oh_my_zsh_run_root git -C "${ohmyzsh_dir}" pull --ff-only
+    oh_my_zsh_run_as_admin git -C "${ohmyzsh_dir}" pull --ff-only
   else
-    oh_my_zsh_run_root rm -rf "${ohmyzsh_dir}"
-    oh_my_zsh_run_root git clone --depth 1 "${OH_MY_ZSH_REPO}" "${ohmyzsh_dir}"
+    oh_my_zsh_run_as_admin rm -rf "${ohmyzsh_dir}"
+    oh_my_zsh_run_as_admin git clone --depth 1 "${OH_MY_ZSH_REPO}" "${ohmyzsh_dir}"
   fi
 
   local theme_path="${ohmyzsh_dir}/themes/guru2.zsh-theme"
   local zshrc_path="${user_home}/.zshrc"
   local z_sh_path="${user_home}/z.sh"
 
-  oh_my_zsh_run_root curl -fsSL "${OH_MY_ZSH_THEME_URL}" -o "${theme_path}"
-  oh_my_zsh_run_root curl -fsSL "${OH_MY_Z_SH_URL}" -o "${z_sh_path}"
+  oh_my_zsh_run_as_admin curl -fsSL "${OH_MY_ZSH_THEME_URL}" -o "${theme_path}"
+  oh_my_zsh_run_as_admin curl -fsSL "${OH_MY_Z_SH_URL}" -o "${z_sh_path}"
   oh_my_zsh_run_root chown -R "${ADMIN_USER}:${ADMIN_USER}" "${ohmyzsh_dir}"
   oh_my_zsh_run_root chown "${ADMIN_USER}:${ADMIN_USER}" "${z_sh_path}"
   oh_my_zsh_run_root chmod 0644 "${theme_path}" "${z_sh_path}"
