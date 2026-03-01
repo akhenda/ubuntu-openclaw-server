@@ -93,9 +93,9 @@ accepted_count="0"
 accepted_last_ip="none"
 accepted_ips=""
 if command -v journalctl >/dev/null 2>&1; then
-  accepted_ips="\$(journalctl --since '24 hours ago' -u ssh -u sshd --no-pager 2>/dev/null | awk '/Accepted / {for (i=1;i<=NF;i++) if (\$i==\"from\") print \$(i+1)}' || true)"
+  accepted_ips="\$(journalctl --since '24 hours ago' -u ssh -u sshd --no-pager 2>/dev/null | awk '/Accepted / {for (i=1;i<=NF;i++) if (\$i=="from") print \$(i+1)}' || true)"
 elif [[ -f /var/log/auth.log ]]; then
-  accepted_ips="\$(grep -E 'sshd.*Accepted ' /var/log/auth.log 2>/dev/null | awk '{for (i=1;i<=NF;i++) if (\$i==\"from\") print \$(i+1)}' || true)"
+  accepted_ips="\$(grep -E 'sshd.*Accepted ' /var/log/auth.log 2>/dev/null | awk '{for (i=1;i<=NF;i++) if (\$i=="from") print \$(i+1)}' || true)"
 fi
 if [[ -n "\${accepted_ips}" ]]; then
   accepted_count="\$(printf '%s\n' "\${accepted_ips}" | sed '/^$/d' | wc -l | tr -d ' ')"
