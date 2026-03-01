@@ -21,6 +21,7 @@ test-scripts:
 	bash tests/test_firewall_phase.sh
 	bash tests/test_edge_phase.sh
 	bash tests/test_dns_phase.sh
+	bash tests/test_openclaw_phase.sh
 
 galaxy:
 	ansible-galaxy collection install -r ansible/requirements.yml
