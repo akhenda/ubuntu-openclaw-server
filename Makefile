@@ -24,6 +24,7 @@ test-scripts:
 	bash tests/test_openclaw_phase.sh
 	bash tests/test_apps_phase.sh
 	bash tests/test_report_phase.sh
+	bash tests/test_verify_phase.sh
 
 galaxy:
 	ansible-galaxy collection install -r ansible/requirements.yml
