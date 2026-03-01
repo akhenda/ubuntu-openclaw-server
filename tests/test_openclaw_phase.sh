@@ -37,10 +37,12 @@ TUNNEL_UUID=123e4567-e89b-12d3-a456-426614174000
 CF_ZONE_ID=0123456789abcdef0123456789abcdef
 CF_API_TOKEN=abcdefghijklmnopqrstuvwxyz123456
 TAILSCALE_AUTHKEY=tskey-auth-test-placeholder-0123456789abcdef
+TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY=true
 OPENCLAW_GATEWAY_TOKEN=tok_abcdefghijklmnopqrstuvwxyz
 OPENCLAW_GATEWAY_PASSWORD=StrongPass1234!
 ADMIN_USER=hendaz
 RUNTIME_USER=openclaw
+HOST_FQDN=node.akhenda.net
 SSH_PORT=1773
 ADMIN_USER_SHELL=/bin/bash
 RUNTIME_USER_SHELL=/bin/bash
@@ -68,6 +70,7 @@ EDGE_SUBNET=172.30.0.0/24
 TRAEFIK_IP=172.30.0.2
 CLOUDFLARED_IP=172.30.0.3
 OPENCLAW_GATEWAY_IP=172.30.0.10
+OH_MY_ZSH_ENABLE=false
 ENVEOF
 }
 
@@ -137,9 +140,6 @@ test_openclaw_phase_dry_run_applies_runtime() {
   assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/docker-compose.yml"
   assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/.env"
   assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/workspace/policies/deploy/AGENTS.md"
-  assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw-gateway.service"
-  assert_contains "$output_file" "systemctl daemon-reload"
-  assert_contains "$output_file" "systemctl enable --now openclaw-gateway.service"
   assert_contains "$output_file" "[openclaw] OpenClaw runtime setup complete"
 }
 

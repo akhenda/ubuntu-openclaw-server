@@ -56,13 +56,21 @@ run-install:
 
 test-scripts:
 	bash tests/test_packages_phase.sh
+	bash tests/test_system_phase.sh
 	bash tests/test_user_phase.sh
 	bash tests/test_ssh_phase.sh
 	bash tests/test_firewall_phase.sh
+	bash tests/test_tailscale_phase.sh
+	bash tests/test_socket_proxy_phase.sh
 	bash tests/test_edge_phase.sh
+	bash tests/test_edge_socket_proxy_contract.sh
 	bash tests/test_dns_phase.sh
 	bash tests/test_openclaw_phase.sh
 	bash tests/test_apps_phase.sh
+	bash tests/test_apps_hub_phase.sh
+	bash tests/test_systemd_phase.sh
+	bash tests/test_motd_phase.sh
+	bash tests/test_oh_my_zsh_phase.sh
 	bash tests/test_report_phase.sh
 	bash tests/test_verify_phase.sh
 
