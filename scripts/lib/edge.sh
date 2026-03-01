@@ -214,6 +214,8 @@ services:
     image: ${TRAEFIK_IMAGE}
     command:
       - --configFile=/etc/traefik/traefik.yml
+    environment:
+      DOCKER_API_VERSION: "1.44"
     volumes:
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro${traefik_docker_socket_volume}${dashboard_volume}${traefik_socket_depends_on}
     networks:
