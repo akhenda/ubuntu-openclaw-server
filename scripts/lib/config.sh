@@ -51,6 +51,10 @@ set_default_config() {
   : "${ADMIN_USER_SHELL:=/bin/bash}"
   : "${RUNTIME_USER_SHELL:=/bin/bash}"
   : "${REMOVE_DEFAULT_UBUNTU_USER:=true}"
+  : "${FIREWALL_ENABLE:=true}"
+  : "${FIREWALL_ALLOW_HTTP:=false}"
+  : "${FIREWALL_ALLOW_HTTPS:=false}"
+  : "${FIREWALL_EXTRA_TCP_PORTS:=}"
 
   : "${EDGE_NETWORK_NAME:=openclaw-edge}"
   : "${EDGE_SUBNET:=172.30.0.0/24}"
@@ -59,6 +63,7 @@ set_default_config() {
   : "${OPENCLAW_GATEWAY_IP:=172.30.0.10}"
 
   export ADMIN_USER RUNTIME_USER SSH_PORT ADMIN_USER_SHELL RUNTIME_USER_SHELL REMOVE_DEFAULT_UBUNTU_USER
+  export FIREWALL_ENABLE FIREWALL_ALLOW_HTTP FIREWALL_ALLOW_HTTPS FIREWALL_EXTRA_TCP_PORTS
   export EDGE_NETWORK_NAME EDGE_SUBNET TRAEFIK_IP CLOUDFLARED_IP OPENCLAW_GATEWAY_IP
 }
 
@@ -98,6 +103,25 @@ validate_boolean_var() {
   [[ "$value" =~ ^(true|false)$ ]] || die "$name must be 'true' or 'false', got: $value"
 }
 
+validate_tcp_port() {
+  local value="$1"
+  [[ "$value" =~ ^[0-9]+$ ]] || return 1
+  (( value >= 1 && value <= 65535 )) || return 1
+  return 0
+}
+
+validate_tcp_port_list_var() {
+  local name="$1"
+  local raw="${!name:-}"
+  [[ -z "${raw}" ]] && return 0
+
+  local normalized="${raw//,/ }"
+  local port=""
+  for port in ${normalized}; do
+    validate_tcp_port "${port}" || die "${name} contains invalid TCP port: ${port}"
+  done
+}
+
 resolve_admin_ssh_public_key() {
   if [[ -z "${ADMIN_SSH_PUBLIC_KEY:-}" && -n "${ADMIN_SSH_PUBLIC_KEY_FILE:-}" ]]; then
     require_file "${ADMIN_SSH_PUBLIC_KEY_FILE}"
@@ -121,9 +145,14 @@ validate_config() {
   [[ "$ADMIN_USER" == "hendaz" ]] || die "ADMIN_USER must be 'hendaz' (locked decision), got: $ADMIN_USER"
   [[ "$RUNTIME_USER" == "openclaw" ]] || die "RUNTIME_USER must be 'openclaw' (locked decision), got: $RUNTIME_USER"
   [[ "$SSH_PORT" == "1773" ]] || die "SSH_PORT must be 1773 (locked decision), got: $SSH_PORT"
+  validate_tcp_port "${SSH_PORT}" || die "SSH_PORT must be a valid TCP port number"
   [[ "$ADMIN_USER_SHELL" =~ ^/ ]] || die "ADMIN_USER_SHELL must be an absolute shell path"
   [[ "$RUNTIME_USER_SHELL" =~ ^/ ]] || die "RUNTIME_USER_SHELL must be an absolute shell path"
   validate_boolean_var REMOVE_DEFAULT_UBUNTU_USER
+  validate_boolean_var FIREWALL_ENABLE
+  validate_boolean_var FIREWALL_ALLOW_HTTP
+  validate_boolean_var FIREWALL_ALLOW_HTTPS
+  validate_tcp_port_list_var FIREWALL_EXTRA_TCP_PORTS
 
   [[ "$EDGE_NETWORK_NAME" == "openclaw-edge" ]] || die "EDGE_NETWORK_NAME must be openclaw-edge, got: $EDGE_NETWORK_NAME"
 
@@ -188,6 +217,10 @@ Configuration summary:
   ADMIN_USER_SHELL=${ADMIN_USER_SHELL}
   RUNTIME_USER_SHELL=${RUNTIME_USER_SHELL}
   REMOVE_DEFAULT_UBUNTU_USER=${REMOVE_DEFAULT_UBUNTU_USER}
+  FIREWALL_ENABLE=${FIREWALL_ENABLE}
+  FIREWALL_ALLOW_HTTP=${FIREWALL_ALLOW_HTTP}
+  FIREWALL_ALLOW_HTTPS=${FIREWALL_ALLOW_HTTPS}
+  FIREWALL_EXTRA_TCP_PORTS=${FIREWALL_EXTRA_TCP_PORTS:-<unset>}
   REPORT_CHANNEL=${REPORT_CHANNEL:-<unset>}
   REPORT_TARGET=${REPORT_TARGET:-<unset>}
 SUMMARY
