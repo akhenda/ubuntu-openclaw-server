@@ -128,8 +128,9 @@ Required variables (must fail-fast if missing where applicable):
 6. `CF_API_TOKEN`
 
 Reporting variables:
-1. `REPORT_CHANNEL` (optional)
-2. `REPORT_TARGET` (optional, but required for channel delivery)
+1. `REPORT_OWNER_NAME` (optional; defaults to `Joseph`)
+2. `REPORT_CHANNEL` (optional)
+3. `REPORT_TARGET` (optional, but required for channel delivery)
 
 Additional OpenClaw runtime secrets/config:
 1. `OPENCLAW_GATEWAY_TOKEN`
