@@ -87,6 +87,27 @@ ensure_admin_user() {
   fi
 }
 
+ensure_admin_password_hash() {
+  if [[ -z "${ADMIN_USER_PASSWORD_HASH:-}" ]]; then
+    log_info "[user] ADMIN_USER_PASSWORD_HASH is empty; skipping local password setup for '${ADMIN_USER}'"
+    return 0
+  fi
+
+  log_info "[user] setting local password hash for '${ADMIN_USER}'"
+
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    log_info "[user] [dry-run] would update password hash for ${ADMIN_USER}"
+    return 0
+  fi
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  printf '%s:%s\n' "${ADMIN_USER}" "${ADMIN_USER_PASSWORD_HASH}" > "${tmp_file}"
+  chmod 0600 "${tmp_file}"
+  user_run_root /bin/bash -c "chpasswd -e < \"${tmp_file}\""
+  rm -f "${tmp_file}"
+}
+
 ensure_runtime_user() {
   if user_exists "${RUNTIME_USER}"; then
     log_info "[user] runtime user '${RUNTIME_USER}' already exists"
@@ -99,6 +120,17 @@ ensure_runtime_user() {
   if group_has_member "sudo" "${RUNTIME_USER}"; then
     log_warn "[user] runtime user '${RUNTIME_USER}' is in sudo group; removing"
     user_run_root gpasswd -d "${RUNTIME_USER}" sudo
+  fi
+
+  if group_exists "docker"; then
+    if group_has_member "docker" "${RUNTIME_USER}"; then
+      log_info "[user] runtime user '${RUNTIME_USER}' already in docker group"
+    else
+      log_info "[user] adding runtime user '${RUNTIME_USER}' to docker group"
+      user_run_root usermod -aG docker "${RUNTIME_USER}"
+    fi
+  else
+    log_warn "[user] docker group does not exist yet; runtime user docker access will be applied on next run"
   fi
 
   log_info "[user] locking runtime user password"
@@ -168,6 +200,7 @@ phase_user() {
   log_info "[user] configuring dual-user model"
   ensure_sudo_group
   ensure_admin_user
+  ensure_admin_password_hash
   ensure_runtime_user
   ensure_admin_authorized_key
   ensure_sudoers_policy

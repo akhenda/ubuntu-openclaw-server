@@ -56,6 +56,7 @@ APPS_ENABLE=true
 APPS_ROOT_DIR=${edge_root}/apps
 APPS_COMPOSE_FILE=${edge_root}/apps/docker-compose.yml
 APPS_VENV_DIR=${edge_root}/.venv
+DNS_BIN_DIR=${edge_root}/bin
 APPS_REGISTER_SCRIPT=${edge_root}/bin/register_app.py
 APPS_DEPLOY_SCRIPT=${edge_root}/bin/deploy_app.sh
 APPS_SETUP_VENV=true
@@ -134,6 +135,8 @@ test_apps_phase_dry_run_generates_registry_and_helpers() {
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/apps/docker-compose.yml"
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/register_app.py"
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/deploy_app.sh"
+  assert_contains "$output_file" "[apps] ensuring hub service exists during install"
+  assert_contains "$output_file" "/bin/bash ${edge_root}/bin/ensure_hub.sh"
   assert_contains "$output_file" "[apps] apps registry setup complete"
 }
 

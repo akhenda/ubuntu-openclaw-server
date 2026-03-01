@@ -67,17 +67,24 @@ EOF
 systemd_render_openclaw_unit() {
   cat <<EOF
 [Unit]
-Description=OpenClaw Gateway (Docker)
+Description=OpenClaw Gateway (Host Runtime)
 After=docker.service openclaw-edge.service
 Requires=docker.service openclaw-edge.service
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
+Type=simple
+User=${RUNTIME_USER}
+Group=${RUNTIME_USER}
+SupplementaryGroups=docker
+EnvironmentFile=-${OPENCLAW_ROOT_DIR}/.env
+Environment=HOME=${OPENCLAW_RUNTIME_HOME}
+Environment=PATH=${OPENCLAW_NPM_PREFIX}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WorkingDirectory=${OPENCLAW_ROOT_DIR}
-ExecStart=/usr/bin/docker compose --env-file .env up -d
-ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=0
+ExecStart=${OPENCLAW_BIN} gateway --bind lan --port ${OPENCLAW_GATEWAY_PORT}
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

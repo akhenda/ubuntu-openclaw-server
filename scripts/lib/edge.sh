@@ -38,6 +38,14 @@ edge_traefik_config_file() {
   printf '%s/traefik.yml' "$(edge_traefik_dir)"
 }
 
+edge_traefik_dynamic_dir() {
+  printf '%s/dynamic' "$(edge_traefik_dir)"
+}
+
+edge_openclaw_dynamic_file() {
+  printf '%s/openclaw.yml' "$(edge_traefik_dynamic_dir)"
+}
+
 edge_cloudflared_config_file() {
   printf '%s/config.yml' "$(edge_cloudflared_dir)"
 }
@@ -121,6 +129,7 @@ edge_ensure_directories() {
   edge_run_root install -d -m 0755 "$(edge_openclaw_root)"
   edge_run_root install -d -m 0755 "$(edge_stack_dir)"
   edge_run_root install -d -m 0755 "$(edge_traefik_dir)"
+  edge_run_root install -d -m 0755 "$(edge_traefik_dynamic_dir)"
   edge_run_root install -d -m 0755 "$(edge_cloudflared_dir)"
   edge_run_root install -d -m 0755 "$(edge_secrets_dir)"
 }
@@ -137,6 +146,9 @@ edge_render_traefik_config() {
 providers:
   docker:
     exposedByDefault: false${docker_endpoint}
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
 
 entryPoints:
   web:
@@ -145,6 +157,23 @@ entryPoints:
 api:
   dashboard: true
   insecure: false
+EOF
+}
+
+edge_render_openclaw_dynamic_config() {
+  cat <<EOF
+http:
+  routers:
+    openclaw:
+      rule: Host(\`${BOT_NAME}.${APPS_DOMAIN}\`)
+      entryPoints:
+        - web
+      service: openclaw
+  services:
+    openclaw:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:${OPENCLAW_GATEWAY_PORT}
 EOF
 }
 
@@ -217,7 +246,10 @@ services:
     environment:
       DOCKER_API_VERSION: "1.44"
     volumes:
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro${traefik_docker_socket_volume}${dashboard_volume}${traefik_socket_depends_on}
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro${traefik_docker_socket_volume}${dashboard_volume}${traefik_socket_depends_on}
+    extra_hosts:
+      - host.docker.internal:host-gateway
     networks:
       ${EDGE_NETWORK_NAME}:
         ipv4_address: ${TRAEFIK_IP}
@@ -246,10 +278,12 @@ EOF
 edge_write_configs() {
   local changed="false"
   local traefik_cfg
+  local openclaw_dynamic_cfg
   local cloudflared_cfg
   local compose_cfg
 
   traefik_cfg="$(edge_render_traefik_config)"
+  openclaw_dynamic_cfg="$(edge_render_openclaw_dynamic_config)"
   cloudflared_cfg="$(edge_render_cloudflared_config)"
   compose_cfg="$(edge_render_compose)"
 
@@ -258,6 +292,10 @@ edge_write_configs() {
   fi
 
   if edge_write_content_if_changed "$(edge_cloudflared_config_file)" "0644" "${cloudflared_cfg}"; then
+    changed="true"
+  fi
+
+  if edge_write_content_if_changed "$(edge_openclaw_dynamic_file)" "0644" "${openclaw_dynamic_cfg}"; then
     changed="true"
   fi
 

@@ -85,6 +85,65 @@ packages_write_docker_repo() {
   packages_run_root /bin/sh -c "printf '%s\n' \"${repo_line}\" > ${repo_file}"
 }
 
+packages_chrome_bin() {
+  if command_exists google-chrome; then
+    printf '%s' "$(command -v google-chrome)"
+    return 0
+  fi
+
+  if command_exists google-chrome-stable; then
+    printf '%s' "$(command -v google-chrome-stable)"
+    return 0
+  fi
+
+  return 1
+}
+
+packages_install_chrome_if_enabled() {
+  if [[ "${OPENCLAW_ENABLE}" != "true" ]]; then
+    return 0
+  fi
+
+  if packages_chrome_bin >/dev/null 2>&1; then
+    local chrome_bin
+    chrome_bin="$(packages_chrome_bin)"
+    log_info "[packages] Google Chrome already installed: $(${chrome_bin} --version)"
+    return 0
+  fi
+
+  log_info "[packages] Installing Google Chrome for OpenClaw browser automation"
+  local chrome_deb="/tmp/google-chrome-stable_current_amd64.deb"
+  packages_run_root curl -fsSL "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" -o "${chrome_deb}"
+  packages_apt_with_retry apt-get install -y --no-install-recommends "${chrome_deb}"
+  packages_run_root rm -f "${chrome_deb}"
+
+  if packages_chrome_bin >/dev/null 2>&1; then
+    local installed_chrome
+    installed_chrome="$(packages_chrome_bin)"
+    log_info "[packages] $(${installed_chrome} --version)"
+  fi
+}
+
+packages_install_node22_if_enabled() {
+  if [[ "${OPENCLAW_ENABLE}" != "true" ]]; then
+    return 0
+  fi
+
+  local node_major=""
+  if command_exists node; then
+    node_major="$(node -v 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/' || true)"
+  fi
+
+  if [[ -n "${node_major}" && "${node_major}" =~ ^[0-9]+$ ]] && (( node_major >= 22 )); then
+    log_info "[packages] Node.js v${node_major} already satisfies OpenClaw host runtime"
+    return 0
+  fi
+
+  log_info "[packages] Installing Node.js 22.x for OpenClaw host runtime"
+  packages_run_root /bin/bash -c "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -"
+  packages_apt_with_retry apt-get install -y --no-install-recommends nodejs
+}
+
 phase_packages() {
   log_info "[packages] installing host prerequisites"
   packages_require_supported_os
@@ -103,6 +162,8 @@ phase_packages() {
     apache2-utils \
     python3 \
     python3-venv \
+    nodejs \
+    npm \
     ufw \
     fail2ban \
     unattended-upgrades
@@ -120,6 +181,9 @@ phase_packages() {
     containerd.io \
     docker-buildx-plugin \
     docker-compose-plugin
+
+  packages_install_node22_if_enabled
+  packages_install_chrome_if_enabled
 
   if command_exists systemctl; then
     packages_run_root systemctl enable --now docker

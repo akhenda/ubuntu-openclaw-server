@@ -10,24 +10,43 @@ openclaw_run_root() {
   run_cmd sudo "$@"
 }
 
-openclaw_docker_bin() {
-  if [[ -n "${DOCKER_BIN:-}" ]]; then
-    printf '%s' "${DOCKER_BIN}"
+openclaw_run_as_runtime() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+
+  if ! command_exists sudo; then
+    die "[openclaw] sudo is required to run commands as ${RUNTIME_USER}"
+  fi
+
+  run_cmd sudo -u "${RUNTIME_USER}" -H env \
+    HOME="${runtime_home}" \
+    PATH="${OPENCLAW_NPM_PREFIX}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    "$@"
+}
+
+openclaw_runtime_home() {
+  if [[ -n "${OPENCLAW_RUNTIME_HOME:-}" ]]; then
+    printf '%s' "${OPENCLAW_RUNTIME_HOME}"
     return 0
   fi
 
-  if command_exists docker; then
-    command -v docker
-    return 0
+  if declare -F user_home >/dev/null 2>&1; then
+    local detected
+    detected="$(user_home "${RUNTIME_USER}" || true)"
+    if [[ -n "${detected}" ]]; then
+      printf '%s' "${detected}"
+      return 0
+    fi
   fi
 
-  printf '%s' "docker"
+  printf '/home/%s' "${RUNTIME_USER}"
 }
 
 openclaw_write_content_if_changed() {
   local target="$1"
   local mode="$2"
   local content="$3"
+  local owner="${4:-root:root}"
 
   local tmp_file
   tmp_file="$(mktemp)"
@@ -52,7 +71,7 @@ openclaw_write_content_if_changed() {
 
   openclaw_run_root install -d -m 0755 "$(dirname "${target}")"
   openclaw_run_root cp "${tmp_file}" "${target}"
-  openclaw_run_root chown root:root "${target}"
+  openclaw_run_root chown "${owner}" "${target}"
   openclaw_run_root chmod "${mode}" "${target}"
   rm -f "${tmp_file}"
   return 0
@@ -62,36 +81,19 @@ openclaw_env_file_path() {
   printf '%s/.env' "${OPENCLAW_ROOT_DIR}"
 }
 
-openclaw_compose_file_path() {
-  printf '%s/docker-compose.yml' "${OPENCLAW_ROOT_DIR}"
-}
-
-openclaw_workspace_root() {
-  printf '%s/workspace' "${OPENCLAW_ROOT_DIR}"
-}
-
-openclaw_config_root() {
-  printf '%s/config' "${OPENCLAW_ROOT_DIR}"
-}
-
 openclaw_cli_wrapper_path() {
   printf '%s' "/usr/local/bin/openclaw"
 }
 
-openclaw_container_uid() {
-  printf '%s' "${OPENCLAW_CONTAINER_UID:-1000}"
-}
-
-openclaw_container_gid() {
-  printf '%s' "${OPENCLAW_CONTAINER_GID:-1000}"
-}
-
 openclaw_render_config_json() {
-  cat <<EOF
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+
+  cat <<EOF_JSON
 {
   "agents": {
     "defaults": {
-      "workspace": "/home/node/.openclaw/workspace"
+      "workspace": "${runtime_home}/.openclaw/workspace"
     }
   },
   "gateway": {
@@ -99,8 +101,7 @@ openclaw_render_config_json() {
     "trustedProxies": ["${TRAEFIK_IP}"],
     "allowRealIpFallback": false,
     "auth": {
-      "mode": "password",
-      "password": "${OPENCLAW_GATEWAY_PASSWORD}"
+      "mode": "password"
     },
     "controlUi": {
       "allowedOrigins": ["https://${BOT_NAME}.${APPS_DOMAIN}"]
@@ -118,109 +119,56 @@ openclaw_render_config_json() {
     }
   }
 }
-EOF
+EOF_JSON
 }
 
 openclaw_render_cli_wrapper() {
-  cat <<EOF
+  cat <<EOF_WRAPPER
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENCLAW_DIR="${OPENCLAW_ROOT_DIR}"
-COMPOSE_FILE="\${OPENCLAW_DIR}/docker-compose.yml"
-ENV_FILE="\${OPENCLAW_DIR}/.env"
+RUNTIME_USER="${RUNTIME_USER}"
+RUNTIME_HOME="$(openclaw_runtime_home)"
+OPENCLAW_BIN="${OPENCLAW_BIN}"
+OPENCLAW_PATH="$(dirname "${OPENCLAW_BIN}"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-if [[ ! -f "\${COMPOSE_FILE}" || ! -f "\${ENV_FILE}" ]]; then
-  echo "OpenClaw runtime files not found under \${OPENCLAW_DIR}." >&2
+if [[ ! -x "\${OPENCLAW_BIN}" ]]; then
+  echo "OpenClaw binary not found at \${OPENCLAW_BIN}." >&2
   echo "Run the installer first: make run-install" >&2
   exit 1
 fi
 
-# Primary path: run CLI inside the already-running gateway container so
-# loopback gateway targets resolve correctly.
-if docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" ps --status running --services | grep -qx 'openclaw-gateway'; then
-  if [[ -t 0 && -t 1 ]]; then
-    exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" exec openclaw-gateway node dist/index.js "\$@"
-  fi
-  exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" exec -T openclaw-gateway node dist/index.js "\$@"
+if [[ "\${USER:-}" == "\${RUNTIME_USER}" ]]; then
+  exec env HOME="\${RUNTIME_HOME}" PATH="\${OPENCLAW_PATH}" "\${OPENCLAW_BIN}" "\$@"
 fi
 
-# Fallback: run CLI sidecar and force gateway service DNS target.
-if [[ -t 0 && -t 1 ]]; then
-  exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" run --rm \
-    -e OPENCLAW_GATEWAY_URL=ws://openclaw-gateway:${OPENCLAW_GATEWAY_PORT} \
-    openclaw-cli "\$@"
+if ! command -v sudo >/dev/null 2>&1; then
+  echo "sudo is required to run OpenClaw as \${RUNTIME_USER}." >&2
+  exit 1
 fi
 
-exec docker compose -f "\${COMPOSE_FILE}" --env-file "\${ENV_FILE}" run --rm -T \
-  -e OPENCLAW_GATEWAY_URL=ws://openclaw-gateway:${OPENCLAW_GATEWAY_PORT} \
-  openclaw-cli "\$@"
-EOF
+exec sudo -u "\${RUNTIME_USER}" -H env \
+  HOME="\${RUNTIME_HOME}" \
+  PATH="\${OPENCLAW_PATH}" \
+  "\${OPENCLAW_BIN}" "\$@"
+EOF_WRAPPER
 }
 
 openclaw_render_env_file() {
-  cat <<EOF
-OPENCLAW_IMAGE=${OPENCLAW_IMAGE}
+  cat <<EOF_ENV
 OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
 OPENCLAW_GATEWAY_PASSWORD=${OPENCLAW_GATEWAY_PASSWORD}
+OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT}
+OPENCLAW_RUNTIME_HOME=$(openclaw_runtime_home)
+OPENCLAW_CONFIG_FILE=${OPENCLAW_CONFIG_FILE}
+OPENCLAW_BIN=${OPENCLAW_BIN}
 BOT_NAME=${BOT_NAME}
 APPS_DOMAIN=${APPS_DOMAIN}
-EOF
-}
-
-openclaw_render_compose_file() {
-  cat <<EOF
-services:
-  openclaw-gateway:
-    image: \${OPENCLAW_IMAGE:-openclaw:local}
-    environment:
-      HOME: /home/node
-      TERM: xterm-256color
-      OPENCLAW_GATEWAY_TOKEN: \${OPENCLAW_GATEWAY_TOKEN}
-      OPENCLAW_GATEWAY_PASSWORD: \${OPENCLAW_GATEWAY_PASSWORD}
-    volumes:
-      - ${OPENCLAW_ROOT_DIR}/config:/home/node/.openclaw
-      - ${OPENCLAW_ROOT_DIR}/workspace:/home/node/.openclaw/workspace
-    init: true
-    restart: unless-stopped
-    command: ["node","dist/index.js","gateway","--bind","lan","--port","${OPENCLAW_GATEWAY_PORT}"]
-    networks:
-      ${EDGE_NETWORK_NAME}:
-        ipv4_address: ${OPENCLAW_GATEWAY_IP}
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=${EDGE_NETWORK_NAME}
-      - traefik.http.routers.openclaw.rule=Host(\`${BOT_NAME}.${APPS_DOMAIN}\`)
-      - traefik.http.routers.openclaw.entrypoints=web
-      - traefik.http.services.openclaw.loadbalancer.server.port=${OPENCLAW_GATEWAY_PORT}
-
-  openclaw-cli:
-    image: \${OPENCLAW_IMAGE:-openclaw:local}
-    environment:
-      HOME: /home/node
-      TERM: xterm-256color
-      OPENCLAW_GATEWAY_TOKEN: \${OPENCLAW_GATEWAY_TOKEN}
-      OPENCLAW_GATEWAY_PASSWORD: \${OPENCLAW_GATEWAY_PASSWORD}
-      BROWSER: "echo"
-    volumes:
-      - ${OPENCLAW_ROOT_DIR}/config:/home/node/.openclaw
-      - ${OPENCLAW_ROOT_DIR}/workspace:/home/node/.openclaw/workspace
-    stdin_open: true
-    tty: true
-    init: true
-    entrypoint: ["node","dist/index.js"]
-    networks:
-      - ${EDGE_NETWORK_NAME}
-
-networks:
-  ${EDGE_NETWORK_NAME}:
-    external: true
-    name: ${EDGE_NETWORK_NAME}
-EOF
+EOF_ENV
 }
 
 openclaw_render_policy_agents_md() {
-  cat <<EOF
+  cat <<EOF_POLICY
 # Deployment Rules (MUST FOLLOW)
 
 ## Reserved subdomains
@@ -253,27 +201,7 @@ You MUST do all of the following:
 ## Never publish ports
 Do not add "ports:" for apps.
 All traffic must go through Traefik + Cloudflare Tunnel.
-EOF
-}
-
-openclaw_render_systemd_unit() {
-  cat <<EOF
-[Unit]
-Description=OpenClaw Gateway (Docker)
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=${OPENCLAW_ROOT_DIR}
-ExecStart=/usr/bin/docker compose --env-file .env up -d
-ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=0
-
-[Install]
-WantedBy=multi-user.target
-EOF
+EOF_POLICY
 }
 
 openclaw_require_prereqs() {
@@ -282,14 +210,22 @@ openclaw_require_prereqs() {
   fi
 
   command_exists git || die "[openclaw] git is required"
+  command_exists node || die "[openclaw] node is required"
+  command_exists npm || die "[openclaw] npm is required"
 }
 
 openclaw_ensure_directories() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+
   openclaw_run_root install -d -m 0755 "${OPENCLAW_ROOT_DIR}"
   openclaw_run_root install -d -m 0755 "${OPENCLAW_SOURCE_DIR}"
-  openclaw_run_root install -d -m 0755 "$(openclaw_config_root)"
-  openclaw_run_root install -d -m 0755 "$(openclaw_workspace_root)"
+  openclaw_run_root install -d -m 0755 "${OPENCLAW_NPM_PREFIX}"
+  openclaw_run_root install -d -m 0700 "${runtime_home}/.openclaw"
+  openclaw_run_root install -d -m 0755 "$(dirname "${OPENCLAW_CONFIG_FILE}")"
   openclaw_run_root install -d -m 0755 "$(dirname "${OPENCLAW_POLICY_FILE}")"
+  openclaw_run_root chown -R "${RUNTIME_USER}:${RUNTIME_USER}" "${runtime_home}/.openclaw"
+  openclaw_run_root chown -R "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_NPM_PREFIX}"
 }
 
 openclaw_sync_source_repo() {
@@ -313,90 +249,53 @@ openclaw_sync_source_repo() {
   openclaw_run_root git clone --branch "${OPENCLAW_SOURCE_REF}" --depth 1 "${OPENCLAW_SOURCE_REPO}" "${OPENCLAW_SOURCE_DIR}"
 }
 
-openclaw_build_image_if_enabled() {
-  if [[ "${OPENCLAW_BUILD_IMAGE}" != "true" ]]; then
-    log_info "[openclaw] OPENCLAW_BUILD_IMAGE=false; skipping docker build"
+openclaw_install_cli() {
+  log_info "[openclaw] installing OpenClaw CLI (${OPENCLAW_NPM_PACKAGE}@${OPENCLAW_NPM_VERSION}) for ${RUNTIME_USER}"
+  openclaw_run_as_runtime npm config set prefix "${OPENCLAW_NPM_PREFIX}"
+  openclaw_run_as_runtime npm install -g "${OPENCLAW_NPM_PACKAGE}@${OPENCLAW_NPM_VERSION}"
+
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
     return 0
   fi
 
-  local docker_cmd
-  docker_cmd="$(openclaw_docker_bin)"
-  if [[ "${DRY_RUN:-false}" != "true" ]] && ! command_exists "${docker_cmd}"; then
-    die "[openclaw] docker binary not found"
+  if [[ ! -x "${OPENCLAW_BIN}" ]]; then
+    die "[openclaw] expected OpenClaw binary at ${OPENCLAW_BIN} after npm install"
   fi
-
-  openclaw_run_root "${docker_cmd}" build -t "${OPENCLAW_IMAGE}" -f "${OPENCLAW_SOURCE_DIR}/Dockerfile" "${OPENCLAW_SOURCE_DIR}"
 }
 
 openclaw_write_runtime_files() {
   local config_json
   local env_file
-  local compose_file
   local policy_file
 
   config_json="$(openclaw_render_config_json)"
   env_file="$(openclaw_render_env_file)"
-  compose_file="$(openclaw_render_compose_file)"
   policy_file="$(openclaw_render_policy_agents_md)"
 
-  openclaw_write_content_if_changed "${OPENCLAW_CONFIG_FILE}" "0600" "${config_json}" || true
-  openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0600" "${env_file}" || true
-  openclaw_write_content_if_changed "$(openclaw_compose_file_path)" "0644" "${compose_file}" || true
-  openclaw_write_content_if_changed "${OPENCLAW_POLICY_FILE}" "0644" "${policy_file}" || true
+  openclaw_write_content_if_changed "${OPENCLAW_CONFIG_FILE}" "0600" "${config_json}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
+  openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0600" "${env_file}" "root:root" || true
+  openclaw_write_content_if_changed "${OPENCLAW_POLICY_FILE}" "0644" "${policy_file}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
 }
 
 openclaw_fix_runtime_permissions() {
-  local uid gid
-  uid="$(openclaw_container_uid)"
-  gid="$(openclaw_container_gid)"
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
 
-  log_info "[openclaw] ensuring mounted runtime paths are readable by container user ${uid}:${gid}"
-
-  openclaw_run_root chown -R "${uid}:${gid}" "$(openclaw_config_root)"
-  openclaw_run_root chown -R "${uid}:${gid}" "$(openclaw_workspace_root)"
+  log_info "[openclaw] ensuring runtime paths are owned by ${RUNTIME_USER}"
+  openclaw_run_root install -d -m 0700 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${runtime_home}/.openclaw"
+  openclaw_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "$(dirname "${OPENCLAW_POLICY_FILE}")"
+  openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_CONFIG_FILE}"
+  openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_POLICY_FILE}"
   openclaw_run_root chmod 0600 "${OPENCLAW_CONFIG_FILE}"
 }
 
 openclaw_write_cli_wrapper() {
   local wrapper_content
   wrapper_content="$(openclaw_render_cli_wrapper)"
-  openclaw_write_content_if_changed "$(openclaw_cli_wrapper_path)" "0755" "${wrapper_content}" || true
+  openclaw_write_content_if_changed "$(openclaw_cli_wrapper_path)" "0755" "${wrapper_content}" "root:root" || true
 }
 
-openclaw_write_systemd_unit_if_enabled() {
-  if [[ "${OPENCLAW_MANAGE_SYSTEMD}" != "true" ]]; then
-    log_info "[openclaw] OPENCLAW_MANAGE_SYSTEMD=false; skipping systemd unit management"
-    return 0
-  fi
-
-  local unit_content
-  unit_content="$(openclaw_render_systemd_unit)"
-  openclaw_write_content_if_changed "${OPENCLAW_SYSTEMD_UNIT}" "0644" "${unit_content}" || true
-
-  if [[ "${DRY_RUN:-false}" == "true" ]]; then
-    openclaw_run_root systemctl daemon-reload
-    if [[ "${OPENCLAW_START_STACK}" == "true" ]]; then
-      openclaw_run_root systemctl enable --now "$(basename "${OPENCLAW_SYSTEMD_UNIT}")"
-    else
-      openclaw_run_root systemctl enable "$(basename "${OPENCLAW_SYSTEMD_UNIT}")"
-    fi
-    return 0
-  fi
-
-  if command_exists systemctl; then
-    openclaw_run_root systemctl daemon-reload
-    if [[ "${OPENCLAW_START_STACK}" == "true" ]]; then
-      openclaw_run_root systemctl enable --now "$(basename "${OPENCLAW_SYSTEMD_UNIT}")"
-    else
-      openclaw_run_root systemctl enable "$(basename "${OPENCLAW_SYSTEMD_UNIT}")"
-    fi
-    return 0
-  fi
-
-  log_warn "[openclaw] systemctl not available; cannot manage ${OPENCLAW_SYSTEMD_UNIT}"
-}
-
-openclaw_start_compose_direct_if_needed() {
+openclaw_start_runtime_if_needed() {
   if [[ "${OPENCLAW_START_STACK}" != "true" ]]; then
     return 0
   fi
@@ -405,9 +304,7 @@ openclaw_start_compose_direct_if_needed() {
     return 0
   fi
 
-  local docker_cmd
-  docker_cmd="$(openclaw_docker_bin)"
-  openclaw_run_root "${docker_cmd}" compose -f "$(openclaw_compose_file_path)" --env-file "$(openclaw_env_file_path)" up -d
+  log_warn "[openclaw] OPENCLAW_MANAGE_SYSTEMD=false; skipping automatic gateway start (use systemd or run openclaw gateway manually)."
 }
 
 phase_openclaw() {
@@ -421,13 +318,16 @@ phase_openclaw() {
   fi
 
   log_info "[openclaw] configuring OpenClaw runtime"
+  if [[ "${OPENCLAW_BUILD_IMAGE}" == "true" ]]; then
+    log_info "[openclaw] OPENCLAW_BUILD_IMAGE=true is ignored in host-runtime mode"
+  fi
   openclaw_require_prereqs
   openclaw_ensure_directories
   openclaw_sync_source_repo
-  openclaw_build_image_if_enabled
+  openclaw_install_cli
   openclaw_write_runtime_files
   openclaw_fix_runtime_permissions
   openclaw_write_cli_wrapper
-  openclaw_start_compose_direct_if_needed
+  openclaw_start_runtime_if_needed
   log_info "[openclaw] OpenClaw runtime setup complete"
 }

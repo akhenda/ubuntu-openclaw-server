@@ -7,8 +7,8 @@ This repository implements the architecture in [docs/ARCHITECTURE_DECISION.md](d
 1. Secure host baseline (`hendaz` admin + `openclaw` runtime, SSH on `1773`, no root login, no password auth)
 2. Mandatory Tailscale baseline (`tailscaled` + `tailscale up` with idempotence/test-mode guard)
 3. Socket-proxy-hardened Cloudflare Tunnel + Traefik edge stack on `openclaw-edge`
-4. OpenClaw runtime + mandatory workspace policy injection (`bootstrap-extra-files`)
-5. Global apps registry helpers with hub auto-create on first app deploy
+4. OpenClaw host runtime (non-Docker) + mandatory workspace policy injection (`bootstrap-extra-files`)
+5. Global apps registry helpers with hub auto-create during install (and ensured on deploy)
 6. Systemd lifecycle units, MOTD status script, Oh-My-Zsh setup, reporting helper, and verification
 
 ## Current State
@@ -100,6 +100,7 @@ Required core values:
 9. `OPENCLAW_GATEWAY_TOKEN`
 10. `OPENCLAW_GATEWAY_PASSWORD`
 11. `ADMIN_SSH_PUBLIC_KEY` or `ADMIN_SSH_PUBLIC_KEY_FILE`
+12. Optional: `ADMIN_USER_PASSWORD_HASH` (for local `sudo -i` password prompt)
 
 Hub contract defaults:
 
@@ -143,10 +144,10 @@ Reporting owner is configurable via `REPORT_OWNER_NAME` (default `Joseph`).
 - `/etc/fail2ban/jail.d/openclaw.local`
 
 4. OpenClaw runtime:
-- `/opt/openclaw/openclaw/config/openclaw.json`
+- `/home/openclaw/.openclaw/openclaw.json`
 - `/opt/openclaw/openclaw/.env`
-- `/opt/openclaw/openclaw/docker-compose.yml`
-- `/opt/openclaw/openclaw/workspace/policies/deploy/AGENTS.md`
+- `/home/openclaw/.openclaw/workspace/policies/deploy/AGENTS.md`
+- `/usr/local/bin/openclaw` (wrapper)
 
 5. Apps/hub helpers:
 - `/opt/openclaw/apps/docker-compose.yml`

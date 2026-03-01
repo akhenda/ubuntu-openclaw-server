@@ -379,6 +379,15 @@ apps_write_runtime_files() {
   apps_write_content_if_changed "${APPS_DEPLOY_SCRIPT}" "0755" "${deploy_script}" || true
 }
 
+apps_ensure_hub_during_install() {
+  if [[ "${HUB_ENABLE}" != "true" ]]; then
+    return 0
+  fi
+
+  log_info "[apps] ensuring hub service exists during install"
+  apps_run_root /bin/bash "${DNS_BIN_DIR}/ensure_hub.sh"
+}
+
 phase_apps() {
   if [[ "${APPS_ENABLE}" != "true" ]]; then
     log_info "[apps] APPS_ENABLE=false; skipping apps registry setup"
@@ -389,5 +398,6 @@ phase_apps() {
   apps_ensure_layout
   apps_setup_venv_if_enabled
   apps_write_runtime_files
+  apps_ensure_hub_during_install
   log_info "[apps] apps registry setup complete"
 }

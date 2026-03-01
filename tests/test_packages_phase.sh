@@ -66,7 +66,7 @@ OSEOF
   bash "$ROOT_DIR/scripts/install.sh" --config "$env_file" --dry-run >"$output_file" 2>&1
 
   assert_contains "$output_file" "[packages] Installing prerequisite OS packages"
-  assert_contains "$output_file" "apt-get install -y --no-install-recommends ca-certificates curl git jq apache2-utils python3 python3-venv ufw fail2ban unattended-upgrades"
+  assert_contains "$output_file" "apt-get install -y --no-install-recommends ca-certificates curl git jq apache2-utils python3 python3-venv nodejs npm ufw fail2ban unattended-upgrades"
   assert_contains "$output_file" "download.docker.com/linux/ubuntu noble stable"
   assert_contains "$output_file" "docker-compose-plugin"
   assert_contains "$output_file" "[packages] prerequisites complete"

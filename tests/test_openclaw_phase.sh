@@ -56,13 +56,18 @@ OPENCLAW_ROOT_DIR=${edge_root}/openclaw
 OPENCLAW_SOURCE_DIR=${edge_root}/openclaw-src
 OPENCLAW_SOURCE_REPO=https://github.com/openclaw/openclaw.git
 OPENCLAW_SOURCE_REF=main
+OPENCLAW_RUNTIME_HOME=/home/openclaw
+OPENCLAW_NPM_PREFIX=/home/openclaw/.npm-global
+OPENCLAW_NPM_PACKAGE=openclaw
+OPENCLAW_NPM_VERSION=latest
+OPENCLAW_BIN=/home/openclaw/.npm-global/bin/openclaw
 OPENCLAW_IMAGE=openclaw:local
 OPENCLAW_BUILD_IMAGE=true
 OPENCLAW_START_STACK=true
 OPENCLAW_MANAGE_SYSTEMD=true
 OPENCLAW_GATEWAY_PORT=18789
-OPENCLAW_CONFIG_FILE=${edge_root}/openclaw/config/openclaw.json
-OPENCLAW_POLICY_FILE=${edge_root}/openclaw/workspace/policies/deploy/AGENTS.md
+OPENCLAW_CONFIG_FILE=/home/openclaw/.openclaw/openclaw.json
+OPENCLAW_POLICY_FILE=/home/openclaw/.openclaw/workspace/policies/deploy/AGENTS.md
 OPENCLAW_POLICY_INJECTION=true
 OPENCLAW_SYSTEMD_UNIT=${edge_root}/openclaw-gateway.service
 EDGE_NETWORK_NAME=openclaw-edge
@@ -135,11 +140,11 @@ test_openclaw_phase_dry_run_applies_runtime() {
 
   assert_contains "$output_file" "[openclaw] configuring OpenClaw runtime"
   assert_contains "$output_file" "git clone --branch main --depth 1 https://github.com/openclaw/openclaw.git ${edge_root}/openclaw-src"
-  assert_contains "$output_file" "docker build -t openclaw:local -f ${edge_root}/openclaw-src/Dockerfile ${edge_root}/openclaw-src"
-  assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/config/openclaw.json"
-  assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/docker-compose.yml"
+  assert_contains "$output_file" "npm install -g openclaw@latest"
+  assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/openclaw.json"
   assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/.env"
-  assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/workspace/policies/deploy/AGENTS.md"
+  assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/AGENTS.md"
+  assert_contains "$output_file" "[openclaw] [dry-run] would update /usr/local/bin/openclaw"
   assert_contains "$output_file" "[openclaw] OpenClaw runtime setup complete"
 }
 

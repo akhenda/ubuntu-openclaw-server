@@ -28,6 +28,7 @@ TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY=true
 OPENCLAW_GATEWAY_TOKEN=tok_abcdefghijklmnopqrstuvwxyz
 OPENCLAW_GATEWAY_PASSWORD=StrongPass1234!
 ADMIN_USER=hendaz
+ADMIN_USER_PASSWORD_HASH='$6$rounds=656000$testsalt$testhashvalue'
 RUNTIME_USER=openclaw
 HOST_FQDN=node.akhenda.net
 SSH_PORT=1773
@@ -89,6 +90,7 @@ SUEOF
 
   assert_contains "$output_file" "[user] configuring dual-user model"
   assert_contains "$output_file" "useradd --create-home --shell /bin/bash --groups sudo hendaz"
+  assert_contains "$output_file" "[user] [dry-run] would update password hash for hendaz"
   assert_contains "$output_file" "useradd --create-home --shell /bin/bash --user-group openclaw"
   assert_contains "$output_file" "usermod -L openclaw"
   assert_contains "$output_file" "authorized_keys"

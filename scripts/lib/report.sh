@@ -54,13 +54,19 @@ BODY="\${2:?body required}"
 
 DEFAULT_REPORT_OWNER_NAME="${REPORT_OWNER_NAME}"
 DEFAULT_REPORT_FAIL_ON_SEND="${REPORT_FAIL_ON_SEND}"
-DEFAULT_OPENCLAW_ROOT_DIR="${OPENCLAW_ROOT_DIR}"
+DEFAULT_OPENCLAW_WRAPPER="${OPENCLAW_WRAPPER_PATH:-/usr/local/bin/openclaw}"
+DEFAULT_RUNTIME_USER="${RUNTIME_USER}"
+DEFAULT_RUNTIME_HOME="${OPENCLAW_RUNTIME_HOME}"
+DEFAULT_OPENCLAW_BIN="${OPENCLAW_BIN}"
 
 REPORT_OWNER_NAME="\${REPORT_OWNER_NAME:-\${DEFAULT_REPORT_OWNER_NAME}}"
 REPORT_FAIL_ON_SEND="\${REPORT_FAIL_ON_SEND:-\${DEFAULT_REPORT_FAIL_ON_SEND}}"
 REPORT_CHANNEL="\${REPORT_CHANNEL:-}"
 REPORT_TARGET="\${REPORT_TARGET:-}"
-OPENCLAW_ROOT_DIR="\${OPENCLAW_ROOT_DIR:-\${DEFAULT_OPENCLAW_ROOT_DIR}}"
+OPENCLAW_WRAPPER="\${OPENCLAW_WRAPPER:-\${DEFAULT_OPENCLAW_WRAPPER}}"
+RUNTIME_USER="\${RUNTIME_USER:-\${DEFAULT_RUNTIME_USER}}"
+RUNTIME_HOME="\${RUNTIME_HOME:-\${DEFAULT_RUNTIME_HOME}}"
+OPENCLAW_BIN="\${OPENCLAW_BIN:-\${DEFAULT_OPENCLAW_BIN}}"
 
 fallback_stdout() {
   echo "=== \${TITLE} (owner: \${REPORT_OWNER_NAME}) ==="
@@ -82,30 +88,19 @@ if [[ -z "\${REPORT_TARGET}" ]]; then
   exit 0
 fi
 
-if ! command -v docker >/dev/null 2>&1; then
-  fail_or_fallback "docker is not available for OpenClaw channel delivery"
-  exit \$?
-fi
-
-if [[ ! -d "\${OPENCLAW_ROOT_DIR}" ]]; then
-  fail_or_fallback "OPENCLAW_ROOT_DIR not found: \${OPENCLAW_ROOT_DIR}"
-  exit \$?
-fi
-
-cd "\${OPENCLAW_ROOT_DIR}"
-if [[ ! -f ".env" || ! -f "docker-compose.yml" ]]; then
-  fail_or_fallback "OpenClaw runtime files missing (.env/docker-compose.yml)"
+if [[ ! -x "\${OPENCLAW_WRAPPER}" ]]; then
+  fail_or_fallback "OpenClaw wrapper not found: \${OPENCLAW_WRAPPER}"
   exit \$?
 fi
 
 message="\${TITLE}\n\n\${BODY}"
 if [[ -n "\${REPORT_CHANNEL}" ]]; then
-  if ! docker compose --env-file .env run --rm openclaw-cli message send --channel "\${REPORT_CHANNEL}" --target "\${REPORT_TARGET}" --message "\${message}"; then
+  if ! "\${OPENCLAW_WRAPPER}" message send --channel "\${REPORT_CHANNEL}" --target "\${REPORT_TARGET}" --message "\${message}"; then
     fail_or_fallback "OpenClaw message send failed"
     exit \$?
   fi
 else
-  if ! docker compose --env-file .env run --rm openclaw-cli message send --target "\${REPORT_TARGET}" --message "\${message}"; then
+  if ! "\${OPENCLAW_WRAPPER}" message send --target "\${REPORT_TARGET}" --message "\${message}"; then
     fail_or_fallback "OpenClaw message send failed"
     exit \$?
   fi

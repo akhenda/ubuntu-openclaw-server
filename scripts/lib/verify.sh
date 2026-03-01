@@ -124,6 +124,7 @@ verify_edge_artifacts() {
 
   verify_require_file "${EDGE_ROOT_DIR}/edge/docker-compose.yml" "Edge compose file"
   verify_require_file "${EDGE_ROOT_DIR}/edge/traefik/traefik.yml" "Traefik config"
+  verify_require_file "${EDGE_ROOT_DIR}/edge/traefik/dynamic/openclaw.yml" "Traefik OpenClaw dynamic config"
   verify_require_file "${EDGE_ROOT_DIR}/edge/cloudflared/config.yml" "Cloudflared config"
 
   if [[ "${SOCKET_PROXY_ENABLE}" == "true" ]]; then
@@ -165,7 +166,7 @@ verify_openclaw_artifacts() {
 
   verify_require_file "${OPENCLAW_CONFIG_FILE}" "OpenClaw config"
   verify_require_file "$(openclaw_env_file_path)" "OpenClaw env file"
-  verify_require_file "$(openclaw_compose_file_path)" "OpenClaw compose file"
+  verify_require_file "$(openclaw_cli_wrapper_path)" "OpenClaw CLI wrapper"
   verify_require_file "${OPENCLAW_POLICY_FILE}" "OpenClaw deploy policy file"
 
   verify_require_contains "${OPENCLAW_CONFIG_FILE}" '"bootstrap-extra-files"' "OpenClaw config"
