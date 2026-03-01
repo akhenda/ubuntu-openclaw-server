@@ -79,7 +79,7 @@ parse_args() {
 main() {
   parse_args "$@"
 
-  log_info "OpenClaw Bash toolkit scaffold"
+  log_info "OpenClaw Bash toolkit installer"
   log_info "Repo root: ${REPO_ROOT}"
 
   load_config_file "${CONFIG_FILE}"
@@ -95,8 +95,6 @@ main() {
     exit 0
   fi
 
-  log_warn "Scaffold mode: phase implementations are placeholders in this commit"
-
   phase_packages
   phase_user
   phase_ssh
@@ -108,8 +106,7 @@ main() {
   phase_report
   phase_verify
 
-  log_info "Scaffold execution completed"
-  log_info "Next: implement real phase logic incrementally"
+  log_info "Installer execution completed"
 }
 
 main "$@"
