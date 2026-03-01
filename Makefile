@@ -3,7 +3,7 @@ export ANSIBLE_HOME := $(CURDIR)/.ansible
 OPENCLAW_UI_PORT ?= 3000
 CONFIG_FILE ?= config/.env
 
-.PHONY: deps check-config run-install galaxy lint test-docker test-vagrant test-vagrant-integration run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage local-openclaw-up local-openclaw-tunnel local-openclaw-down
+.PHONY: deps check-config run-install test-scripts galaxy lint test-docker test-vagrant test-vagrant-integration run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage local-openclaw-up local-openclaw-tunnel local-openclaw-down
 
 deps:
 	pip install -r requirements.txt
@@ -13,6 +13,9 @@ check-config:
 
 run-install:
 	bash scripts/install.sh --config $(CONFIG_FILE) --print-config
+
+test-scripts:
+	bash tests/test_packages_phase.sh
 
 galaxy:
 	ansible-galaxy collection install -r ansible/requirements.yml
