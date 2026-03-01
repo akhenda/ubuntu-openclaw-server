@@ -3,7 +3,7 @@
 report_run_root() {
   if (( EUID == 0 )); then
     run_cmd "$@"
-    return 0
+    return $?
   fi
 
   command_exists sudo || die "[report] sudo is required when not running as root"
