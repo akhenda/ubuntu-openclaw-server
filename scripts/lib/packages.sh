@@ -39,11 +39,31 @@ packages_require_supported_os() {
 packages_run_root() {
   if (( EUID == 0 )); then
     run_cmd "$@"
-    return 0
+    return $?
   fi
 
   command_exists sudo || die "This phase requires root privileges (or sudo)."
   run_cmd sudo "$@"
+}
+
+packages_apt_with_retry() {
+  local max_attempts="${APT_RETRY_ATTEMPTS:-20}"
+  local sleep_seconds="${APT_RETRY_DELAY_SECONDS:-5}"
+  local attempt=1
+
+  while true; do
+    if packages_run_root env DEBIAN_FRONTEND=noninteractive "$@"; then
+      return 0
+    fi
+
+    if (( attempt >= max_attempts )); then
+      return 1
+    fi
+
+    log_warn "[packages] apt command failed (attempt ${attempt}/${max_attempts}); retrying in ${sleep_seconds}s"
+    attempt=$((attempt + 1))
+    sleep "${sleep_seconds}"
+  done
 }
 
 packages_write_docker_repo() {
@@ -74,8 +94,8 @@ phase_packages() {
   local docker_codename="${VERSION_CODENAME:-noble}"
 
   log_info "[packages] Installing prerequisite OS packages"
-  packages_run_root env DEBIAN_FRONTEND=noninteractive apt-get update
-  packages_run_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  packages_apt_with_retry apt-get update
+  packages_apt_with_retry apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
@@ -93,8 +113,8 @@ phase_packages() {
   packages_run_root chmod a+r /etc/apt/keyrings/docker.asc
   packages_write_docker_repo "${docker_arch}" "${docker_codename}"
 
-  packages_run_root env DEBIAN_FRONTEND=noninteractive apt-get update
-  packages_run_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  packages_apt_with_retry apt-get update
+  packages_apt_with_retry apt-get install -y --no-install-recommends \
     docker-ce \
     docker-ce-cli \
     containerd.io \
