@@ -47,6 +47,11 @@ load_config_file() {
 set_default_config() {
   : "${ADMIN_USER:=hendaz}"
   : "${RUNTIME_USER:=openclaw}"
+  : "${HOST_FQDN:=}"
+  : "${HOST_IP:=}"
+  : "${SYSTEM_TIMEZONE:=Africa/Nairobi}"
+  : "${FAIL2BAN_ENABLE:=true}"
+  : "${UNATTENDED_UPGRADES_ENABLE:=true}"
   : "${SSH_PORT:=1773}"
   : "${ADMIN_USER_SHELL:=/bin/bash}"
   : "${RUNTIME_USER_SHELL:=/bin/bash}"
@@ -82,16 +87,35 @@ set_default_config() {
   : "${OPENCLAW_POLICY_FILE:=${OPENCLAW_ROOT_DIR}/workspace/policies/deploy/AGENTS.md}"
   : "${OPENCLAW_POLICY_INJECTION:=true}"
   : "${OPENCLAW_SYSTEMD_UNIT:=/etc/systemd/system/openclaw-gateway.service}"
+  : "${EDGE_MANAGE_SYSTEMD:=true}"
+  : "${APPS_MANAGE_SYSTEMD:=true}"
+  : "${APPS_START_STACK:=true}"
+  : "${EDGE_SYSTEMD_UNIT:=/etc/systemd/system/openclaw-edge.service}"
+  : "${APPS_SYSTEMD_UNIT:=/etc/systemd/system/openclaw-apps.service}"
   : "${TAILSCALE_ENABLE:=true}"
   : "${TAILSCALE_AUTHKEY:=}"
   : "${TAILSCALE_SSH:=true}"
   : "${TAILSCALE_HOSTNAME:=${BOT_NAME}-${ADMIN_USER}}"
+  : "${TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY:=false}"
+  : "${TAILSCALE_EXTRA_ARGS:=}"
   : "${HUB_ENABLE:=true}"
   : "${HUB_AUTOCREATE_ON_FIRST_APP:=true}"
   : "${HUB_PRIMARY_HOST:=hub.${APPS_DOMAIN}}"
   : "${HUB_ALIAS_HOST:=apps.${DOMAIN}}"
   : "${HUB_STYLE_PROFILE:=modern-minimal}"
   : "${HUB_ICON_STRATEGY:=deterministic-random}"
+  : "${SOCKET_PROXY_ENABLE:=true}"
+  : "${SOCKET_PROXY_IMAGE:=tecnativa/docker-socket-proxy:latest}"
+  : "${SOCKET_PROXY_IP:=172.30.0.4}"
+  : "${SOCKET_PROXY_ENDPOINT:=http://docker-socket-proxy:2375}"
+  : "${MOTD_ENABLE:=true}"
+  : "${MOTD_SCRIPT_PATH:=/etc/update-motd.d/99-openclaw-status}"
+  : "${OH_MY_ZSH_ENABLE:=true}"
+  : "${OH_MY_ZSH_REPO:=https://github.com/ohmyzsh/ohmyzsh.git}"
+  : "${OH_MY_ZSH_THEME:=guru2}"
+  : "${OH_MY_ZSH_PLUGINS:=git}"
+  : "${OH_MY_ZSH_THEME_URL:=https://gist.githubusercontent.com/lukeharvey/992fca16c6f5d1b66f75b9e1b17ab308/raw/guru2.zsh-theme}"
+  : "${OH_MY_Z_SH_URL:=https://raw.githubusercontent.com/rupa/z/master/z.sh}"
   : "${APPS_ENABLE:=true}"
   : "${APPS_ROOT_DIR:=${EDGE_ROOT_DIR}/apps}"
   : "${APPS_COMPOSE_FILE:=${APPS_ROOT_DIR}/docker-compose.yml}"
@@ -113,7 +137,8 @@ set_default_config() {
   : "${CLOUDFLARED_IP:=172.30.0.3}"
   : "${OPENCLAW_GATEWAY_IP:=172.30.0.10}"
 
-  export ADMIN_USER RUNTIME_USER SSH_PORT ADMIN_USER_SHELL RUNTIME_USER_SHELL REMOVE_DEFAULT_UBUNTU_USER
+  export ADMIN_USER RUNTIME_USER HOST_FQDN HOST_IP SYSTEM_TIMEZONE FAIL2BAN_ENABLE UNATTENDED_UPGRADES_ENABLE
+  export SSH_PORT ADMIN_USER_SHELL RUNTIME_USER_SHELL REMOVE_DEFAULT_UBUNTU_USER
   export FIREWALL_ENABLE FIREWALL_ALLOW_HTTP FIREWALL_ALLOW_HTTPS FIREWALL_EXTRA_TCP_PORTS
   export EDGE_ENABLE EDGE_ROOT_DIR EDGE_START_STACK EDGE_REQUIRE_TUNNEL_CREDENTIALS
   export TRAEFIK_IMAGE CLOUDFLARED_IMAGE TRAEFIK_DASHBOARD_HOST TRAEFIK_DASHBOARD_USERS CLOUDFLARED_CREDENTIALS_FILE
@@ -121,8 +146,13 @@ set_default_config() {
   export OPENCLAW_ENABLE OPENCLAW_ROOT_DIR OPENCLAW_SOURCE_DIR OPENCLAW_SOURCE_REPO OPENCLAW_SOURCE_REF OPENCLAW_IMAGE
   export OPENCLAW_BUILD_IMAGE OPENCLAW_START_STACK OPENCLAW_MANAGE_SYSTEMD OPENCLAW_GATEWAY_PORT
   export OPENCLAW_CONFIG_FILE OPENCLAW_POLICY_FILE OPENCLAW_POLICY_INJECTION OPENCLAW_SYSTEMD_UNIT
+  export EDGE_MANAGE_SYSTEMD APPS_MANAGE_SYSTEMD APPS_START_STACK EDGE_SYSTEMD_UNIT APPS_SYSTEMD_UNIT
   export TAILSCALE_ENABLE TAILSCALE_AUTHKEY TAILSCALE_SSH TAILSCALE_HOSTNAME
+  export TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY TAILSCALE_EXTRA_ARGS
   export HUB_ENABLE HUB_AUTOCREATE_ON_FIRST_APP HUB_PRIMARY_HOST HUB_ALIAS_HOST HUB_STYLE_PROFILE HUB_ICON_STRATEGY
+  export SOCKET_PROXY_ENABLE SOCKET_PROXY_IMAGE SOCKET_PROXY_IP SOCKET_PROXY_ENDPOINT
+  export MOTD_ENABLE MOTD_SCRIPT_PATH
+  export OH_MY_ZSH_ENABLE OH_MY_ZSH_REPO OH_MY_ZSH_THEME OH_MY_ZSH_PLUGINS OH_MY_ZSH_THEME_URL OH_MY_Z_SH_URL
   export APPS_ENABLE APPS_ROOT_DIR APPS_COMPOSE_FILE APPS_VENV_DIR APPS_REGISTER_SCRIPT APPS_DEPLOY_SCRIPT
   export APPS_SETUP_VENV APPS_VENV_PYTHON
   export VERIFY_ENABLE VERIFY_STRICT
@@ -138,6 +168,7 @@ validate_required_vars() {
     TUNNEL_UUID
     CF_ZONE_ID
     CF_API_TOKEN
+    HOST_FQDN
     TAILSCALE_AUTHKEY
     OPENCLAW_GATEWAY_TOKEN
     OPENCLAW_GATEWAY_PASSWORD
@@ -237,6 +268,13 @@ validate_config() {
 
   [[ "$ADMIN_USER" == "hendaz" ]] || die "ADMIN_USER must be 'hendaz' (locked decision), got: $ADMIN_USER"
   [[ "$RUNTIME_USER" == "openclaw" ]] || die "RUNTIME_USER must be 'openclaw' (locked decision), got: $RUNTIME_USER"
+  validate_hostname_like_var HOST_FQDN
+  if [[ -n "${HOST_IP:-}" ]]; then
+    validate_ipv4 "${HOST_IP}" || die "HOST_IP must be a valid IPv4 address, got: ${HOST_IP}"
+  fi
+  validate_non_empty_trimmed_var SYSTEM_TIMEZONE
+  validate_boolean_var FAIL2BAN_ENABLE
+  validate_boolean_var UNATTENDED_UPGRADES_ENABLE
   [[ "$SSH_PORT" == "1773" ]] || die "SSH_PORT must be 1773 (locked decision), got: $SSH_PORT"
   validate_tcp_port "${SSH_PORT}" || die "SSH_PORT must be a valid TCP port number"
   [[ "$ADMIN_USER_SHELL" =~ ^/ ]] || die "ADMIN_USER_SHELL must be an absolute shell path"
@@ -266,13 +304,22 @@ validate_config() {
   validate_path_is_absolute OPENCLAW_CONFIG_FILE
   validate_path_is_absolute OPENCLAW_POLICY_FILE
   validate_path_is_absolute OPENCLAW_SYSTEMD_UNIT
+  validate_boolean_var EDGE_MANAGE_SYSTEMD
+  validate_boolean_var APPS_MANAGE_SYSTEMD
+  validate_boolean_var APPS_START_STACK
+  validate_path_is_absolute EDGE_SYSTEMD_UNIT
+  validate_path_is_absolute APPS_SYSTEMD_UNIT
   [[ "${OPENCLAW_POLICY_INJECTION}" == "true" ]] || die "OPENCLAW_POLICY_INJECTION must remain true (locked decision)"
   validate_boolean_var TAILSCALE_ENABLE
   validate_boolean_var TAILSCALE_SSH
+  validate_boolean_var TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY
   validate_dns_label_var TAILSCALE_HOSTNAME
   [[ "${TAILSCALE_ENABLE}" == "true" ]] || die "TAILSCALE_ENABLE must remain true (locked requirement)"
   validate_non_empty_trimmed_var TAILSCALE_AUTHKEY
   (( ${#TAILSCALE_AUTHKEY} >= 20 )) || die "TAILSCALE_AUTHKEY appears too short"
+  if [[ "${TAILSCALE_AUTHKEY}" == tskey-auth-test-placeholder-* && "${TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY}" != "true" ]]; then
+    die "TAILSCALE_AUTHKEY uses placeholder value. Set a real key or enable TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY=true for tests."
+  fi
   [[ "${TAILSCALE_AUTHKEY}" == tskey-* ]] || log_warn "TAILSCALE_AUTHKEY does not start with 'tskey-'; verify value is correct."
   validate_boolean_var HUB_ENABLE
   validate_boolean_var HUB_AUTOCREATE_ON_FIRST_APP
@@ -286,6 +333,18 @@ validate_config() {
     die "HUB_STYLE_PROFILE must be one of: modern-minimal|minimal|creative-minimal"
   [[ "${HUB_ICON_STRATEGY}" =~ ^(deterministic-random|static|emoji-random)$ ]] || \
     die "HUB_ICON_STRATEGY must be one of: deterministic-random|static|emoji-random"
+  validate_boolean_var SOCKET_PROXY_ENABLE
+  validate_ipv4 "${SOCKET_PROXY_IP}" || die "Invalid SOCKET_PROXY_IP: ${SOCKET_PROXY_IP}"
+  [[ "${SOCKET_PROXY_ENDPOINT}" =~ ^https?://[a-zA-Z0-9._-]+:[0-9]+$ ]] || \
+    die "SOCKET_PROXY_ENDPOINT must be URL format (example: http://docker-socket-proxy:2375)"
+  validate_boolean_var MOTD_ENABLE
+  validate_path_is_absolute MOTD_SCRIPT_PATH
+  validate_boolean_var OH_MY_ZSH_ENABLE
+  validate_non_empty_trimmed_var OH_MY_ZSH_REPO
+  validate_non_empty_trimmed_var OH_MY_ZSH_THEME
+  validate_non_empty_trimmed_var OH_MY_ZSH_PLUGINS
+  validate_non_empty_trimmed_var OH_MY_ZSH_THEME_URL
+  validate_non_empty_trimmed_var OH_MY_Z_SH_URL
   validate_boolean_var APPS_ENABLE
   validate_boolean_var APPS_SETUP_VENV
   validate_path_is_absolute APPS_ROOT_DIR
@@ -323,8 +382,8 @@ validate_config() {
   validate_ipv4 "$CLOUDFLARED_IP" || die "Invalid CLOUDFLARED_IP: $CLOUDFLARED_IP"
   validate_ipv4 "$OPENCLAW_GATEWAY_IP" || die "Invalid OPENCLAW_GATEWAY_IP: $OPENCLAW_GATEWAY_IP"
 
-  if [[ "$TRAEFIK_IP" == "$CLOUDFLARED_IP" || "$TRAEFIK_IP" == "$OPENCLAW_GATEWAY_IP" || "$CLOUDFLARED_IP" == "$OPENCLAW_GATEWAY_IP" ]]; then
-    die "TRAEFIK_IP, CLOUDFLARED_IP, and OPENCLAW_GATEWAY_IP must be unique"
+  if [[ "$TRAEFIK_IP" == "$CLOUDFLARED_IP" || "$TRAEFIK_IP" == "$OPENCLAW_GATEWAY_IP" || "$CLOUDFLARED_IP" == "$OPENCLAW_GATEWAY_IP" || "$TRAEFIK_IP" == "$SOCKET_PROXY_IP" || "$CLOUDFLARED_IP" == "$SOCKET_PROXY_IP" || "$OPENCLAW_GATEWAY_IP" == "$SOCKET_PROXY_IP" ]]; then
+    die "TRAEFIK_IP, CLOUDFLARED_IP, OPENCLAW_GATEWAY_IP, and SOCKET_PROXY_IP must be unique"
   fi
 
   if [[ "$APPS_DOMAIN" == "$DOMAIN" ]]; then
@@ -357,6 +416,11 @@ Configuration summary:
   CF_API_TOKEN=$(redact_secret "${CF_API_TOKEN}")
   ADMIN_USER=${ADMIN_USER}
   RUNTIME_USER=${RUNTIME_USER}
+  HOST_FQDN=${HOST_FQDN}
+  HOST_IP=${HOST_IP:-<auto-detect>}
+  SYSTEM_TIMEZONE=${SYSTEM_TIMEZONE}
+  FAIL2BAN_ENABLE=${FAIL2BAN_ENABLE}
+  UNATTENDED_UPGRADES_ENABLE=${UNATTENDED_UPGRADES_ENABLE}
   SSH_PORT=${SSH_PORT}
   EDGE_NETWORK_NAME=${EDGE_NETWORK_NAME}
   EDGE_SUBNET=${EDGE_SUBNET}
@@ -401,16 +465,35 @@ Configuration summary:
   OPENCLAW_POLICY_FILE=${OPENCLAW_POLICY_FILE}
   OPENCLAW_POLICY_INJECTION=${OPENCLAW_POLICY_INJECTION}
   OPENCLAW_SYSTEMD_UNIT=${OPENCLAW_SYSTEMD_UNIT}
+  EDGE_MANAGE_SYSTEMD=${EDGE_MANAGE_SYSTEMD}
+  APPS_MANAGE_SYSTEMD=${APPS_MANAGE_SYSTEMD}
+  APPS_START_STACK=${APPS_START_STACK}
+  EDGE_SYSTEMD_UNIT=${EDGE_SYSTEMD_UNIT}
+  APPS_SYSTEMD_UNIT=${APPS_SYSTEMD_UNIT}
   TAILSCALE_ENABLE=${TAILSCALE_ENABLE}
   TAILSCALE_AUTHKEY=$(redact_secret "${TAILSCALE_AUTHKEY}")
   TAILSCALE_SSH=${TAILSCALE_SSH}
   TAILSCALE_HOSTNAME=${TAILSCALE_HOSTNAME}
+  TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY=${TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY}
+  TAILSCALE_EXTRA_ARGS=${TAILSCALE_EXTRA_ARGS:-<unset>}
   HUB_ENABLE=${HUB_ENABLE}
   HUB_AUTOCREATE_ON_FIRST_APP=${HUB_AUTOCREATE_ON_FIRST_APP}
   HUB_PRIMARY_HOST=${HUB_PRIMARY_HOST}
   HUB_ALIAS_HOST=${HUB_ALIAS_HOST:-<unset>}
   HUB_STYLE_PROFILE=${HUB_STYLE_PROFILE}
   HUB_ICON_STRATEGY=${HUB_ICON_STRATEGY}
+  SOCKET_PROXY_ENABLE=${SOCKET_PROXY_ENABLE}
+  SOCKET_PROXY_IMAGE=${SOCKET_PROXY_IMAGE}
+  SOCKET_PROXY_IP=${SOCKET_PROXY_IP}
+  SOCKET_PROXY_ENDPOINT=${SOCKET_PROXY_ENDPOINT}
+  MOTD_ENABLE=${MOTD_ENABLE}
+  MOTD_SCRIPT_PATH=${MOTD_SCRIPT_PATH}
+  OH_MY_ZSH_ENABLE=${OH_MY_ZSH_ENABLE}
+  OH_MY_ZSH_REPO=${OH_MY_ZSH_REPO}
+  OH_MY_ZSH_THEME=${OH_MY_ZSH_THEME}
+  OH_MY_ZSH_PLUGINS=${OH_MY_ZSH_PLUGINS}
+  OH_MY_ZSH_THEME_URL=${OH_MY_ZSH_THEME_URL}
+  OH_MY_Z_SH_URL=${OH_MY_Z_SH_URL}
   APPS_ENABLE=${APPS_ENABLE}
   APPS_ROOT_DIR=${APPS_ROOT_DIR}
   APPS_COMPOSE_FILE=${APPS_COMPOSE_FILE}

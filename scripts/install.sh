@@ -9,13 +9,19 @@ for module in \
   common.sh \
   config.sh \
   packages.sh \
+  system.sh \
   user.sh \
   ssh.sh \
   firewall.sh \
+  tailscale.sh \
+  socket_proxy.sh \
   edge.sh \
   dns.sh \
   openclaw.sh \
   apps.sh \
+  systemd.sh \
+  motd.sh \
+  oh_my_zsh.sh \
   report.sh \
   verify.sh
   do
@@ -96,13 +102,19 @@ main() {
   fi
 
   phase_packages
+  phase_system
   phase_user
   phase_ssh
   phase_firewall
+  phase_tailscale
+  phase_socket_proxy
   phase_edge
   phase_dns
   phase_openclaw
   phase_apps
+  phase_systemd
+  phase_motd
+  phase_oh_my_zsh
   phase_report
   phase_verify
 
