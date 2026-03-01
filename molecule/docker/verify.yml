@@ -1,16 +1,32 @@
 ---
 - name: Verify docker scenario
   hosts: all
-  gather_facts: true
+  gather_facts: false
+  become: false
+  vars:
+    remote_project_root: /tmp/ubuntu-openclaw-server
+    remote_env_file: "{{ remote_project_root }}/config/molecule-docker.env"
+    install_log_file: /tmp/molecule-install.log
   tasks:
-    - name: Gather installed package facts
-      ansible.builtin.package_facts:
-        manager: apt
+    - name: Read installer dry-run log
+      ansible.builtin.slurp:
+        path: "{{ install_log_file }}"
+      register: install_log
 
-    - name: Assert ufw and unattended-upgrades packages are installed
+    - name: Assert dry-run log contains expected checkpoints
       ansible.builtin.assert:
         that:
-          - "'ufw' in ansible_facts.packages"
-          - "'unattended-upgrades' in ansible_facts.packages"
-        fail_msg: "Expected ufw and unattended-upgrades packages to be installed."
-        success_msg: "Required baseline packages are installed."
+          - "'Configuration validation passed' in (install_log.content | b64decode)"
+          - "'[packages] installing host prerequisites' in (install_log.content | b64decode)"
+          - "'[verify] VERIFY_ENABLE=false; skipping verification checks' in (install_log.content | b64decode)"
+        fail_msg: "Docker dry-run log did not include expected installer checkpoints."
+
+    - name: Re-check config contract directly
+      ansible.builtin.command:
+        argv:
+          - bash
+          - "{{ remote_project_root }}/scripts/install.sh"
+          - --check-config
+          - --config
+          - "{{ remote_env_file }}"
+      changed_when: false

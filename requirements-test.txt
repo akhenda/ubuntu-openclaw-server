@@ -1,3 +1,3 @@
+ansible-core>=2.16,<2.19
 molecule>=25.1,<26
 molecule-plugins[docker,vagrant]>=25.8,<26
-

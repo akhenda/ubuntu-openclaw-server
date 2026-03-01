@@ -1,297 +1,113 @@
 ---
 - name: Verify vagrant scenario
   hosts: all
+  gather_facts: false
   become: true
-  gather_facts: true
   vars:
-    verify_ansible_host: ""
-    verify_ansible_port: ""
-    ansible_host: >-
-      {{
-        verify_ansible_host
-        if (verify_ansible_host | length > 0)
-        else hostvars[inventory_hostname].ansible_host
-      }}
-    ansible_port: >-
-      {{
-        verify_ansible_port
-        if (verify_ansible_port | length > 0)
-        else hostvars[inventory_hostname].ansible_port
-      }}
-    expected_ssh_port: "{{ base_ssh_port | default('22') }}"
-    legacy_ssh_port: "22"
-    verify_allow_legacy_ssh_port_effective: "{{ verify_allow_legacy_ssh_port | default(false) | bool }}"
-    verify_expect_legacy_ssh_deny_effective: "{{ verify_expect_legacy_ssh_deny | default(true) | bool }}"
-    verify_expect_socket_proxy_effective: "{{ verify_expect_socket_proxy | default(false) | bool }}"
-    verify_expect_traefik_proxy_endpoint_effective: "{{ verify_expect_traefik_proxy_endpoint | default(false) | bool }}"
-    verify_expect_homepage_proxy_endpoint_effective: "{{ verify_expect_homepage_proxy_endpoint | default(false) | bool }}"
-    verify_expect_oh_my_zsh_effective: "{{ verify_expect_oh_my_zsh | default(false) | bool }}"
-    verify_oh_my_zsh_user_effective: "{{ verify_oh_my_zsh_user | default(oh_my_zsh_target_user | default('')) }}"
-    verify_socket_proxy_endpoint_effective: >-
-      {{
-        verify_socket_proxy_endpoint
-        | default(socket_proxy_endpoint | default('http://docker-socket-proxy:2375'))
-      }}
+    remote_project_root: /tmp/ubuntu-openclaw-server
+    remote_env_file: "{{ remote_project_root }}/config/molecule-vagrant.env"
+    install_log_file: /tmp/molecule-install.log
+    ssh_dropin_file: /tmp/molecule-ssh/sshd_config.d/99-openclaw-hardening.conf
+    admin_ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBASE64PLACEHOLDERKEYEXAMPLE1234567890 hendaz@test"
   tasks:
-    - name: Ensure sshd_config exists
-      ansible.builtin.stat:
-        path: /etc/ssh/sshd_config
-      register: sshd_config
-
-    - name: Assert sshd_config exists
-      ansible.builtin.assert:
-        that:
-          - sshd_config.stat.exists
-
-    - name: Read sshd_config
+    - name: Read installer live run log
       ansible.builtin.slurp:
-        path: /etc/ssh/sshd_config
-      register: sshd_config_content
+        path: "{{ install_log_file }}"
+      register: install_log
 
-    - name: Decode sshd_config
-      ansible.builtin.set_fact:
-        sshd_config_decoded: "{{ sshd_config_content.content | b64decode }}"
-
-    - name: Assert SSH hardening options are applied
+    - name: Assert installer completed expected phases
       ansible.builtin.assert:
         that:
-          - "'PermitRootLogin no' in sshd_config_decoded"
-          - "'PasswordAuthentication no' in sshd_config_decoded"
-          - "(sshd_config_decoded | regex_search('(?m)^Port\\s+' ~ expected_ssh_port ~ '$')) is not none"
-          - >-
-            (expected_ssh_port == legacy_ssh_port) or
-            verify_allow_legacy_ssh_port_effective or
-            ((sshd_config_decoded | regex_search('(?m)^Port\\s+' ~ legacy_ssh_port ~ '$')) is none)
-        fail_msg: "sshd_config does not contain expected port/root/password hardening."
+          - "'[packages] prerequisites complete' in (install_log.content | b64decode)"
+          - "'[user] dual-user setup complete' in (install_log.content | b64decode)"
+          - "'[ssh] no sshd config changes detected' in (install_log.content | b64decode)"
+          - "'[verify] verification checks passed' in (install_log.content | b64decode)"
+        fail_msg: "Installer log is missing expected live-run checkpoints."
 
-    - name: Check static hostname
-      ansible.builtin.command:
-        argv:
-          - hostnamectl
-          - --static
-      changed_when: false
-      register: hostnamectl_static
-
-    - name: Assert hostname is configured from base_fqdn
-      ansible.builtin.assert:
-        that:
-          - (hostnamectl_static.stdout | trim) in [base_fqdn, base_fqdn.split('.')[0]]
-        fail_msg: "Expected hostname to match base_fqdn (short or full form)."
-      when: base_fqdn | length > 0
-
-    - name: Read /etc/hosts
-      ansible.builtin.slurp:
-        path: /etc/hosts
-      register: hosts_file_content
-      when: base_fqdn | length > 0
-
-    - name: Determine expected host mapping IP
-      ansible.builtin.set_fact:
-        expected_host_mapping_ip: >-
-          {{
-            (base_host_ip | default('') | trim)
-            if (base_host_ip | default('') | trim | length > 0)
-            else (ansible_default_ipv4.address | default('127.0.0.1', true))
-          }}
-      when: base_fqdn | length > 0
-
-    - name: Assert /etc/hosts contains configured host mapping
-      ansible.builtin.assert:
-        that:
-          - "'%s %s %s' | format(expected_host_mapping_ip, base_fqdn, base_fqdn.split('.')[0]) in (hosts_file_content.content | b64decode)"
-        fail_msg: "Expected /etc/hosts to contain configured host IP and hostname mapping."
-      when: base_fqdn | length > 0
-
-    - name: Ensure custom MOTD script exists and is executable
-      ansible.builtin.stat:
-        path: /etc/update-motd.d/99-openclaw-status
-      register: motd_script
-
-    - name: Assert custom MOTD script exists and executable
-      ansible.builtin.assert:
-        that:
-          - motd_script.stat.exists
-          - motd_script.stat.executable
-      when: base_configure_motd | bool
-
-    - name: Run custom MOTD script
-      ansible.builtin.command:
-        argv:
-          - /etc/update-motd.d/99-openclaw-status
-      changed_when: false
-      register: motd_output
-      when: base_configure_motd | bool
-
-    - name: Assert custom MOTD output contains key sections
-      ansible.builtin.assert:
-        that:
-          - "'OpenClaw Host Status' in motd_output.stdout"
-          - "'Fail2ban' in motd_output.stdout"
-          - "'Docker' in motd_output.stdout"
-      when: base_configure_motd | bool
-
-    - name: Gather service facts
-      ansible.builtin.service_facts:
-
-    - name: Assert fail2ban is enabled/running under systemd
-      ansible.builtin.assert:
-        that:
-          - "ansible_facts.services['fail2ban.service'] is defined"
-          - "ansible_facts.services['fail2ban.service'].state == 'running'"
-        fail_msg: "fail2ban service is not running as expected."
-      when: ansible_service_mgr == "systemd"
-
-    - name: Assert unattended-upgrades service exists under systemd
-      ansible.builtin.assert:
-        that:
-          - "ansible_facts.services['unattended-upgrades.service'] is defined"
-        fail_msg: "unattended-upgrades service is missing."
-      when: ansible_service_mgr == "systemd"
-
-    - name: Check ufw status
-      ansible.builtin.command:
-        argv:
-          - ufw
-          - status
-      changed_when: false
-      register: ufw_status
-
-    - name: Parse ufw status lines
-      ansible.builtin.set_fact:
-        ufw_status_lines: "{{ ufw_status.stdout_lines | map('trim') | list }}"
-
-    - name: Assert ufw is active and SSH rules match expected port policy
-      ansible.builtin.assert:
-        that:
-          - "'Status: active' in ufw_status.stdout"
-          - >-
-            (
-              ufw_status_lines
-              | select('search', '^' ~ expected_ssh_port ~ '(/tcp)?\\b')
-              | select('search', '\\bALLOW\\b')
-              | list
-              | length
-            ) > 0
-          - >-
-            (expected_ssh_port == legacy_ssh_port) or
-            (not verify_expect_legacy_ssh_deny_effective) or
-            (
-              (
-                ufw_status_lines
-                | select('search', '^' ~ legacy_ssh_port ~ '(/tcp)?\\b')
-                | select('search', '\\bDENY\\b')
-                | list
-                | length
-              ) > 0
-            )
-        fail_msg: "ufw is not active or SSH allow/deny rules are not as expected."
-
-    - name: Verify socket proxy container is running
-      community.docker.docker_container_info:
-        name: "{{ socket_proxy_container_name | default('docker-socket-proxy') }}"
-      register: verify_socket_proxy_container
-      when: verify_expect_socket_proxy_effective
-
-    - name: Assert socket proxy container health
-      ansible.builtin.assert:
-        that:
-          - verify_socket_proxy_container.exists
-          - verify_socket_proxy_container.container.State.Running | bool
-        fail_msg: "Socket proxy container is missing or not running."
-      when: verify_expect_socket_proxy_effective
-
-    - name: Read Traefik static configuration
-      ansible.builtin.slurp:
-        path: /opt/traefik/traefik.yml
-      register: verify_traefik_config
-      when: verify_expect_traefik_proxy_endpoint_effective
-
-    - name: Assert Traefik uses socket proxy endpoint
-      ansible.builtin.assert:
-        that:
-          - verify_socket_proxy_endpoint_effective in (verify_traefik_config.content | b64decode)
-        fail_msg: "Traefik config is not using socket proxy endpoint."
-      when: verify_expect_traefik_proxy_endpoint_effective
-
-    - name: Read Traefik compose stack
-      ansible.builtin.slurp:
-        path: /opt/traefik/docker-compose.yml
-      register: verify_traefik_compose
-      when: verify_expect_traefik_proxy_endpoint_effective
-
-    - name: Assert Traefik compose does not mount docker.sock directly
-      ansible.builtin.assert:
-        that:
-          - "'/var/run/docker.sock:/var/run/docker.sock:ro' not in (verify_traefik_compose.content | b64decode)"
-        fail_msg: "Traefik compose still mounts docker.sock directly."
-      when: verify_expect_traefik_proxy_endpoint_effective
-
-    - name: Read Homepage docker endpoint config
-      ansible.builtin.slurp:
-        path: /opt/homepage/config/docker.yaml
-      register: verify_homepage_docker_cfg
-      when: verify_expect_homepage_proxy_endpoint_effective
-
-    - name: Assert Homepage uses socket proxy endpoint
-      ansible.builtin.assert:
-        that:
-          - verify_socket_proxy_endpoint_effective in (verify_homepage_docker_cfg.content | b64decode)
-        fail_msg: "Homepage docker config is not using socket proxy endpoint."
-      when: verify_expect_homepage_proxy_endpoint_effective
-
-    - name: Read Homepage compose stack
-      ansible.builtin.slurp:
-        path: /opt/homepage/docker-compose.yml
-      register: verify_homepage_compose
-      when: verify_expect_homepage_proxy_endpoint_effective
-
-    - name: Assert Homepage compose does not mount docker.sock directly
-      ansible.builtin.assert:
-        that:
-          - "'/var/run/docker.sock:/var/run/docker.sock:ro' not in (verify_homepage_compose.content | b64decode)"
-        fail_msg: "Homepage compose still mounts docker.sock directly."
-      when: verify_expect_homepage_proxy_endpoint_effective
-
-    - name: Gather passwd entry for Oh My Zsh user
+    - name: Ensure admin user exists
       ansible.builtin.getent:
         database: passwd
-        key: "{{ verify_oh_my_zsh_user_effective }}"
-      when:
-        - verify_expect_oh_my_zsh_effective
-        - verify_oh_my_zsh_user_effective | length > 0
+        key: hendaz
 
-    - name: Derive Oh My Zsh expected paths
-      ansible.builtin.set_fact:
-        verify_oh_my_zsh_home: "{{ ansible_facts.getent_passwd[verify_oh_my_zsh_user_effective][4] }}"
-        verify_oh_my_zsh_shell: "{{ ansible_facts.getent_passwd[verify_oh_my_zsh_user_effective][5] }}"
-      when:
-        - verify_expect_oh_my_zsh_effective
-        - verify_oh_my_zsh_user_effective | length > 0
+    - name: Ensure runtime user exists
+      ansible.builtin.getent:
+        database: passwd
+        key: openclaw
 
-    - name: Check Oh My Zsh installation directory
-      ansible.builtin.stat:
-        path: "{{ verify_oh_my_zsh_home }}/.oh-my-zsh"
-      register: verify_ohmyzsh_dir_stat
-      when:
-        - verify_expect_oh_my_zsh_effective
-        - verify_oh_my_zsh_user_effective | length > 0
+    - name: Capture admin user groups
+      ansible.builtin.command:
+        argv:
+          - id
+          - -nG
+          - hendaz
+      changed_when: false
+      register: admin_groups
 
-    - name: Check Oh My Zsh rc file
-      ansible.builtin.stat:
-        path: "{{ verify_oh_my_zsh_home }}/.zshrc"
-      register: verify_ohmyzsh_rc_stat
-      when:
-        - verify_expect_oh_my_zsh_effective
-        - verify_oh_my_zsh_user_effective | length > 0
-
-    - name: Assert Oh My Zsh is configured for user
+    - name: Assert admin user is in sudo group
       ansible.builtin.assert:
         that:
-          - verify_oh_my_zsh_shell == "/bin/zsh"
-          - verify_ohmyzsh_dir_stat.stat.exists
-          - verify_ohmyzsh_dir_stat.stat.isdir
-          - verify_ohmyzsh_rc_stat.stat.exists
-        fail_msg: "Oh My Zsh is not configured as expected."
-      when:
-        - verify_expect_oh_my_zsh_effective
-        - verify_oh_my_zsh_user_effective | length > 0
+          - "'sudo' in (admin_groups.stdout.split())"
+
+    - name: Capture runtime user groups
+      ansible.builtin.command:
+        argv:
+          - id
+          - -nG
+          - openclaw
+      changed_when: false
+      register: runtime_groups
+
+    - name: Assert runtime user is not in sudo group
+      ansible.builtin.assert:
+        that:
+          - "'sudo' not in (runtime_groups.stdout.split())"
+
+    - name: Read admin authorized_keys
+      ansible.builtin.slurp:
+        path: /home/hendaz/.ssh/authorized_keys
+      register: authorized_keys
+
+    - name: Assert admin public key is present
+      ansible.builtin.assert:
+        that:
+          - "admin_ssh_public_key in (authorized_keys.content | b64decode)"
+
+    - name: Read ssh hardening drop-in from sandbox path
+      ansible.builtin.slurp:
+        path: "{{ ssh_dropin_file }}"
+      register: ssh_dropin
+
+    - name: Assert ssh hardening policy values
+      ansible.builtin.assert:
+        that:
+          - "'Port 1773' in (ssh_dropin.content | b64decode)"
+          - "'PermitRootLogin no' in (ssh_dropin.content | b64decode)"
+          - "'PasswordAuthentication no' in (ssh_dropin.content | b64decode)"
+          - "'AllowUsers hendaz' in (ssh_dropin.content | b64decode)"
+
+    - name: Ensure docker is installed
+      ansible.builtin.command:
+        argv:
+          - docker
+          - --version
+      changed_when: false
+
+    - name: Ensure Docker apt repo file exists
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/docker.list
+      register: docker_repo
+
+    - name: Assert Docker apt repo file exists
+      ansible.builtin.assert:
+        that:
+          - docker_repo.stat.exists
+
+    - name: Re-check config contract directly
+      ansible.builtin.command:
+        argv:
+          - bash
+          - "{{ remote_project_root }}/scripts/install.sh"
+          - --check-config
+          - --config
+          - "{{ remote_env_file }}"
+      changed_when: false

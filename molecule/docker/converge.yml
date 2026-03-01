@@ -1,16 +1,18 @@
 ---
-- name: Converge docker scenario (base role only)
+- name: Converge docker scenario (Bash installer dry-run)
   hosts: all
   gather_facts: false
   become: false
   vars:
-    base_apt_upgrade: "no"
-    base_manage_firewall: false
-    base_manage_admin_user: false
-    base_remove_ubuntu_user: false
-    base_install_fail2ban: false
-    base_set_timezone: false
-    openclaw_enable: false
+    project_root: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+    remote_project_root: /tmp/ubuntu-openclaw-server
+    remote_config_dir: "{{ remote_project_root }}/config"
+    remote_env_file: "{{ remote_config_dir }}/molecule-docker.env"
+    install_log_file: /tmp/molecule-install.log
+    ssh_sandbox_dir: /tmp/molecule-ssh
+    ssh_main_config: "{{ ssh_sandbox_dir }}/sshd_config"
+    ssh_config_dir: "{{ ssh_sandbox_dir }}/sshd_config.d"
+    ssh_dropin_file: "{{ ssh_config_dir }}/99-openclaw-hardening.conf"
   pre_tasks:
     - name: Ensure python3 exists in test container
       ansible.builtin.raw: |
@@ -20,5 +22,77 @@
     - name: Gather facts after python bootstrap
       ansible.builtin.setup:
 
-  roles:
-    - role: base
+  tasks:
+    - name: Ensure remote project directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ remote_project_root }}"
+        - "{{ remote_config_dir }}"
+        - "{{ ssh_sandbox_dir }}"
+        - "{{ ssh_config_dir }}"
+
+    - name: Copy installer scripts to test container
+      ansible.builtin.copy:
+        src: "{{ project_root }}/scripts/"
+        dest: "{{ remote_project_root }}/scripts/"
+        mode: preserve
+
+    - name: Write docker scenario config file
+      ansible.builtin.copy:
+        dest: "{{ remote_env_file }}"
+        mode: "0644"
+        content: |
+          DOMAIN=example.com
+          APPS_DOMAIN=example.com
+          BOT_NAME=cherry
+          TUNNEL_UUID=123e4567-e89b-12d3-a456-426614174000
+          CF_ZONE_ID=0123456789abcdef0123456789abcdef
+          CF_API_TOKEN=abcdefghijklmnopqrstuvwxyz123456
+          OPENCLAW_GATEWAY_TOKEN=tok_abcdefghijklmnopqrstuvwxyz
+          OPENCLAW_GATEWAY_PASSWORD=StrongPass1234!
+          ADMIN_USER=hendaz
+          RUNTIME_USER=openclaw
+          SSH_PORT=1773
+          ADMIN_USER_SHELL=/bin/bash
+          RUNTIME_USER_SHELL=/bin/bash
+          REMOVE_DEFAULT_UBUNTU_USER=false
+          ADMIN_SSH_PUBLIC_KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBASE64PLACEHOLDERKEYEXAMPLE1234567890 hendaz@test"
+          FIREWALL_ENABLE=false
+          EDGE_ENABLE=false
+          DNS_ENABLE=false
+          OPENCLAW_ENABLE=false
+          APPS_ENABLE=false
+          REPORT_ENABLE=false
+          VERIFY_ENABLE=false
+          EDGE_NETWORK_NAME=openclaw-edge
+          EDGE_SUBNET=172.30.0.0/24
+          TRAEFIK_IP=172.30.0.2
+          CLOUDFLARED_IP=172.30.0.3
+          OPENCLAW_GATEWAY_IP=172.30.0.10
+          REPORT_OWNER_NAME=Joseph
+
+    - name: Seed ssh sandbox main config
+      ansible.builtin.copy:
+        dest: "{{ ssh_main_config }}"
+        mode: "0644"
+        content: |
+          Include /etc/ssh/sshd_config.d/*.conf
+          Port 22
+
+    - name: Run installer in dry-run mode
+      ansible.builtin.shell: >-
+        bash {{ remote_project_root }}/scripts/install.sh
+        --config {{ remote_env_file }}
+        --dry-run
+        --print-config
+        > {{ install_log_file }} 2>&1
+      args:
+        executable: /bin/bash
+      environment:
+        SSHD_MAIN_CONFIG: "{{ ssh_main_config }}"
+        SSHD_CONFIG_DIR: "{{ ssh_config_dir }}"
+        SSHD_HARDENING_FILE: "{{ ssh_dropin_file }}"
+      changed_when: false

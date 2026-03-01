@@ -1,7 +1,4 @@
 ---
-dependency:
-  name: galaxy
-
 driver:
   name: vagrant
 
@@ -15,32 +12,15 @@ platforms:
 
 provisioner:
   name: ansible
+  log: true
   env:
-    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/ansible/roles
-    ANSIBLE_COLLECTIONS_PATH: ${HOME}/.ansible/collections:/usr/share/ansible/collections
     ANSIBLE_LIBRARY: ${MOLECULE_PROJECT_DIRECTORY}/molecule/vagrant/library
-  inventory:
-    group_vars:
-      all:
-        apt_lock_timeout: 1200
-        base_apt_upgrade: "no"
-        base_ssh_port: "22"
-        base_allowed_ssh_ports:
-          - "22"
-        base_manage_admin_user: false
-        base_remove_ubuntu_user: false
-        base_fqdn: "molecule.local"
-        base_configure_motd: true
-        ssh_server_ports:
-          - "22"
-        ssh_client_port: "22"
-        ssh_allow_users: "vagrant"
-        openclaw_enable: false
   playbooks:
     converge: converge.yml
     verify: verify.yml
 
 scenario:
+  name: vagrant
   test_sequence:
     - destroy
     - create

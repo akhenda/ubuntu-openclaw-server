@@ -40,6 +40,8 @@ Controller machine:
    - `requirements-test.txt` (Molecule stack)
    - `requirements-lint.txt` (YAML lint)
    - `requirements-dev.txt` (full local profile; includes test + lint)
+4. Docker (for `molecule/docker`)
+5. Vagrant + provider (VirtualBox/libvirt) (for `molecule/vagrant`)
 
 Target machine:
 
@@ -51,10 +53,13 @@ Target machine:
 ```bash
 python -m venv .venv && source .venv/bin/activate
 make deps
+make deps-test
 cp config/example.env config/.env
 $EDITOR config/.env
 make check-config
 make test-scripts
+make test-docker
+make test-vagrant
 make run-install
 ```
 
@@ -68,6 +73,8 @@ make run-install
 - `make check-config`: validate `config/.env` and print effective config
 - `make run-install`: execute full installer
 - `make test-scripts`: run Bash phase tests
+- `make test-docker`: run Molecule docker scenario (installer dry-run)
+- `make test-vagrant`: run Molecule vagrant scenario (installer live baseline)
 
 You can override the config path:
 
@@ -147,19 +154,6 @@ make test-scripts
 ```
 
 These tests are deterministic dry-run checks of each phase contract.
-
-## Legacy Tooling
-
-This repository still contains historical Ansible/Molecule files and legacy compatibility targets.
-
-Use `legacy-*` targets if you intentionally restore/use the old layout, for example:
-
-1. `make legacy-lint`
-2. `make legacy-test-docker`
-3. `make legacy-test-vagrant`
-4. `make legacy-test-vagrant-integration`
-
-Unprefixed `test-*` targets are compatibility aliases to legacy Ansible scenarios.
 
 The authoritative implementation path remains the Bash toolkit under `scripts/` + `config/example.env`.
 
