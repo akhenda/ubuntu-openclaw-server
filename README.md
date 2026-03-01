@@ -36,7 +36,10 @@ Controller machine:
 
 1. Python 3.11+ (recommended)
 2. `venv`
-3. Optional: tool dependencies from `requirements.txt` for lint/test workflows
+3. Optional tooling dependencies (split profiles):
+   - `requirements-test.txt` (Molecule stack)
+   - `requirements-lint.txt` (YAML lint)
+   - `requirements-dev.txt` (full local profile; includes test + lint)
 
 Target machine:
 
@@ -57,7 +60,11 @@ make run-install
 
 ## Make Targets (Bash Toolkit)
 
-- `make deps`: install Python tooling from `requirements.txt`
+- `make deps`: alias of `make deps-dev`
+- `make deps-dev`: install full local profile (`requirements-dev.txt`)
+- `make deps-test`: install Molecule profile (`requirements-test.txt`)
+- `make deps-lint`: install lint profile (`requirements-lint.txt`)
+- `make lint`: run Bash syntax checks and YAML lint
 - `make check-config`: validate `config/.env` and print effective config
 - `make run-install`: execute full installer
 - `make test-scripts`: run Bash phase tests
@@ -152,7 +159,7 @@ Use `legacy-*` targets if you intentionally restore/use the old layout, for exam
 3. `make legacy-test-vagrant`
 4. `make legacy-test-vagrant-integration`
 
-The old unprefixed targets (`lint`, `test-docker`, etc.) are compatibility aliases.
+Unprefixed `test-*` targets are compatibility aliases to legacy Ansible scenarios.
 
 The authoritative implementation path remains the Bash toolkit under `scripts/` + `config/example.env`.
 

@@ -1,0 +1,3 @@
+molecule>=25.1,<26
+molecule-plugins[docker,vagrant]>=25.8,<26
+

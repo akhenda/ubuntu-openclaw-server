@@ -5,7 +5,7 @@ name: CI
   pull_request:
 
 jobs:
-  lint-and-docker-molecule:
+  bash-toolkit-ci:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,14 +17,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
+      - name: Install lint dependencies
+        run: pip install -r requirements-lint.txt
 
-      - name: Install Ansible collections
-        run: ansible-galaxy collection install -r ansible/requirements.yml
+      - name: Validate example config contract
+        run: make check-config CONFIG_FILE=config/example.env
 
-      - name: Run ansible-lint
-        run: ansible-lint
-
-      - name: Run docker molecule scenario
-        run: molecule test -s docker
+      - name: Run script test suite
+        run: make test-scripts

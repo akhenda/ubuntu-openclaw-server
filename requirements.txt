@@ -1,5 +1,2 @@
-ansible-core>=2.16,<2.19
-ansible-lint>=24.7,<25
-molecule>=25.1,<26
-molecule-plugins[docker,vagrant]>=25.8,<26
-yamllint>=1.35,<2
+# Backward-compatible default: full local development profile.
+-r requirements-dev.txt

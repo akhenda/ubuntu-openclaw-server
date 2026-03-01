@@ -3,10 +3,18 @@ SHELL := /bin/bash
 
 CONFIG_FILE ?= config/.env
 OPENCLAW_UI_PORT ?= 3000
+VENV_PYTHON := .venv/bin/python
+PIP ?= python3 -m pip
+YAMLLINT ?= yamllint
+
+ifneq ("$(wildcard $(VENV_PYTHON))","")
+PIP := $(VENV_PYTHON) -m pip
+YAMLLINT := $(VENV_PYTHON) -m yamllint
+endif
 
 .PHONY: \
 	help \
-	deps check-config run-install test-scripts \
+	deps deps-dev deps-test deps-lint check-config run-install test-scripts \
 	legacy-lint legacy-test-docker legacy-test-vagrant legacy-test-vagrant-integration \
 	lint test-docker test-vagrant test-vagrant-integration \
 	run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage \
@@ -14,7 +22,11 @@ OPENCLAW_UI_PORT ?= 3000
 
 help:
 	@echo "Active Bash Toolkit Targets:"
-	@echo "  make deps                         Install Python dependencies"
+	@echo "  make deps                         Install full dev dependencies (alias: deps-dev)"
+	@echo "  make deps-dev                     Install full dev dependencies"
+	@echo "  make deps-test                    Install test dependencies (Molecule stack)"
+	@echo "  make deps-lint                    Install lint dependencies"
+	@echo "  make lint                         Lint Bash toolkit files (bash -n + yamllint)"
 	@echo "  make check-config                 Validate config file (CONFIG_FILE=...)"
 	@echo "  make run-install                  Run full Bash installer"
 	@echo "  make test-scripts                 Run Bash phase test suite"
@@ -25,8 +37,16 @@ help:
 	@echo "  make legacy-test-vagrant"
 	@echo "  make legacy-test-vagrant-integration"
 
-deps:
-	pip install -r requirements.txt
+deps: deps-dev
+
+deps-dev:
+	$(PIP) install -r requirements-dev.txt
+
+deps-test:
+	$(PIP) install -r requirements-test.txt
+
+deps-lint:
+	$(PIP) install -r requirements-lint.txt
 
 check-config:
 	bash scripts/install.sh --check-config --config $(CONFIG_FILE) --print-config
@@ -66,7 +86,9 @@ legacy-test-vagrant-integration:
 	@test -d molecule || { echo "Legacy target unavailable: molecule/ directory not found."; exit 2; }
 	@set -o pipefail; molecule test -s vagrant-integration 2>&1 | grep -vE "WARNING  Driver .* does not provide a schema.|\\[WARNING\\]: Found variable using reserved name: connection"
 
-lint: legacy-lint
+lint:
+	bash -n scripts/install.sh scripts/lib/*.sh tests/*.sh
+	$(YAMLLINT) .
 
 test-docker: legacy-test-docker
 
