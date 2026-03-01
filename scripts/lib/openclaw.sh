@@ -3,7 +3,7 @@
 openclaw_run_root() {
   if (( EUID == 0 )); then
     run_cmd "$@"
-    return 0
+    return $?
   fi
 
   command_exists sudo || die "[openclaw] sudo is required when not running as root"
@@ -192,8 +192,11 @@ You MUST do all of the following:
 3. Determine the internal app port (for example 3000).
 4. Register + deploy using:
    ${EDGE_ROOT_DIR}/bin/deploy_app.sh <appName> <port>
-5. Validate app health and routing.
-6. Send ${REPORT_OWNER_NAME} a deployment report using:
+5. Hub routing is mandatory:
+   - Ensure hub exists at https://${HUB_PRIMARY_HOST}
+   - App cards must resolve to https://<appName>.${APPS_DOMAIN}
+6. Validate app health and routing.
+7. Send ${REPORT_OWNER_NAME} a deployment report using:
    ${EDGE_ROOT_DIR}/bin/report.sh "<title>" "<body>"
 
 ## Never publish ports
@@ -354,7 +357,6 @@ phase_openclaw() {
   openclaw_sync_source_repo
   openclaw_build_image_if_enabled
   openclaw_write_runtime_files
-  openclaw_write_systemd_unit_if_enabled
   openclaw_start_compose_direct_if_needed
   log_info "[openclaw] OpenClaw runtime setup complete"
 }
