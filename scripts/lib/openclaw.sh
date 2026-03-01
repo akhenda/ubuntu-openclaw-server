@@ -138,6 +138,16 @@ RUNTIME_USER="${RUNTIME_USER}"
 RUNTIME_HOME="$(openclaw_runtime_home)"
 OPENCLAW_BIN="${OPENCLAW_BIN}"
 OPENCLAW_PATH="$(dirname "${OPENCLAW_BIN}"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+OPENCLAW_ENV_FILE="${OPENCLAW_ROOT_DIR}/.env"
+
+load_runtime_env() {
+  if [[ -f "\${OPENCLAW_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "\${OPENCLAW_ENV_FILE}"
+    set +a
+  fi
+}
 
 if [[ ! -x "\${OPENCLAW_BIN}" ]]; then
   echo "OpenClaw binary not found at \${OPENCLAW_BIN}." >&2
@@ -146,6 +156,7 @@ if [[ ! -x "\${OPENCLAW_BIN}" ]]; then
 fi
 
 if [[ "\${USER:-}" == "\${RUNTIME_USER}" ]]; then
+  load_runtime_env
   exec env HOME="\${RUNTIME_HOME}" PATH="\${OPENCLAW_PATH}" "\${OPENCLAW_BIN}" "\$@"
 fi
 
@@ -154,6 +165,7 @@ if ! command -v sudo >/dev/null 2>&1; then
   exit 1
 fi
 
+load_runtime_env
 exec sudo -u "\${RUNTIME_USER}" -H env \
   HOME="\${RUNTIME_HOME}" \
   PATH="\${OPENCLAW_PATH}" \
