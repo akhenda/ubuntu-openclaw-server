@@ -163,7 +163,6 @@ phase_packages() {
     python3 \
     python3-venv \
     nodejs \
-    npm \
     ufw \
     fail2ban \
     unattended-upgrades
