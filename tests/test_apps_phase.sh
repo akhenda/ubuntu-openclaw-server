@@ -25,6 +25,17 @@ assert_not_contains() {
   fi
 }
 
+assert_text_contains() {
+  local text="$1"
+  local pattern="$2"
+  if ! grep -Fq "$pattern" <<<"$text"; then
+    echo "Assertion failed: expected '$pattern' in rendered text" >&2
+    echo "--- rendered ---" >&2
+    printf '%s\n' "$text" >&2
+    exit 1
+  fi
+}
+
 make_valid_env() {
   local out="$1"
   local edge_root="$2"
@@ -137,10 +148,28 @@ test_apps_phase_dry_run_generates_registry_and_helpers() {
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/register_app.py"
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/deploy_app.sh"
   assert_contains "$output_file" "[apps] ensuring app runtime paths are owned by openclaw"
+  assert_contains "$output_file" "chown -R openclaw:openclaw ${edge_root}/apps"
+  assert_contains "$output_file" "install -d -m 0755 -o openclaw -g openclaw ${edge_root}/apps/hub-config"
   assert_contains "$output_file" "chown openclaw:openclaw ${edge_root}/apps/docker-compose.yml"
   assert_contains "$output_file" "[apps] ensuring hub service exists during install"
   assert_contains "$output_file" "/bin/bash ${edge_root}/bin/ensure_hub.sh"
   assert_contains "$output_file" "[apps] apps registry setup complete"
+}
+
+test_apps_deploy_script_uses_explicit_project_directory() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/apps.sh'; \
+    APPS_COMPOSE_FILE=/opt/openclaw/apps/docker-compose.yml; \
+    APPS_VENV_DIR=/opt/openclaw/.venv; \
+    EDGE_NETWORK_NAME=openclaw-edge; \
+    HUB_ENABLE=true; HUB_AUTOCREATE_ON_FIRST_APP=true; HUB_PRIMARY_HOST=hub.akhenda.net; \
+    HUB_ALIAS_HOST=apps.akhenda.net; HUB_STYLE_PROFILE=modern-minimal; \
+    APPS_DOMAIN=akhenda.net; BOT_NAME=mckay; APPS_REGISTER_SCRIPT=/opt/openclaw/bin/register_app.py; \
+    DNS_BIN_DIR=/opt/openclaw/bin; APPS_DEPLOY_SCRIPT=/opt/openclaw/bin/deploy_app.sh; \
+    apps_render_deploy_script")"
+
+  assert_text_contains "$rendered" 'PROJECT_DIR="$(dirname "${APPS_COMPOSE_FILE}")"'
+  assert_text_contains "$rendered" 'docker compose --project-directory "${PROJECT_DIR}" -f "${APPS_COMPOSE_FILE}" up -d --build "${APP_NAME}"'
 }
 
 test_apps_phase_can_be_disabled() {
@@ -174,6 +203,7 @@ test_apps_phase_can_be_disabled() {
 main() {
   test_apps_phase_dry_run_generates_registry_and_helpers
   test_apps_phase_can_be_disabled
+  test_apps_deploy_script_uses_explicit_project_directory
   echo "PASS: test_apps_phase.sh"
 }
 

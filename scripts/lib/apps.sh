@@ -278,8 +278,9 @@ with open(compose_path, "w", encoding="utf-8") as f:
 print(f"OK: ensured hub service routes -> {', '.join(route_hosts)}")
 PY
 
-docker compose -f "\${APPS_COMPOSE_FILE}" up -d "\${HUB_SERVICE_NAME}"
-docker compose -f "\${APPS_COMPOSE_FILE}" ps "\${HUB_SERVICE_NAME}"
+PROJECT_DIR="\$(dirname "\${APPS_COMPOSE_FILE}")"
+docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" up -d "\${HUB_SERVICE_NAME}"
+docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" ps "\${HUB_SERVICE_NAME}"
 EOF
 }
 
@@ -307,6 +308,7 @@ HUB_AUTOCREATE_ON_FIRST_APP="\${HUB_AUTOCREATE_ON_FIRST_APP:-${HUB_AUTOCREATE_ON
 HUB_PRIMARY_HOST="\${HUB_PRIMARY_HOST:-${HUB_PRIMARY_HOST}}"
 HUB_ALIAS_HOST="\${HUB_ALIAS_HOST:-${HUB_ALIAS_HOST}}"
 HUB_STYLE_PROFILE="\${HUB_STYLE_PROFILE:-${HUB_STYLE_PROFILE}}"
+PROJECT_DIR="\$(dirname "\${APPS_COMPOSE_FILE}")"
 
 if [[ -x "\${APPS_VENV_DIR}/bin/python" ]]; then
   "\${APPS_VENV_DIR}/bin/python" "\${REGISTER_PY}"
@@ -325,8 +327,8 @@ if [[ -n "\${CF_API_TOKEN:-}" && -n "\${CF_ZONE_ID:-}" && -n "\${TUNNEL_UUID:-}"
   fi
 fi
 
-docker compose -f "\${APPS_COMPOSE_FILE}" up -d --build "\${APP_NAME}"
-docker compose -f "\${APPS_COMPOSE_FILE}" ps "\${APP_NAME}"
+docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" up -d --build "\${APP_NAME}"
+docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" ps "\${APP_NAME}"
 
 URL="https://\${APP_NAME}.\${APPS_DOMAIN}"
 echo "DEPLOYED_URL=\${URL}"
@@ -341,6 +343,8 @@ apps_ensure_layout() {
 apps_fix_runtime_permissions() {
   log_info "[apps] ensuring app runtime paths are owned by ${RUNTIME_USER}"
   apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${APPS_ROOT_DIR}"
+  apps_run_root chown -R "${RUNTIME_USER}:${RUNTIME_USER}" "${APPS_ROOT_DIR}"
+  apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${APPS_ROOT_DIR}/hub-config"
   apps_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${APPS_COMPOSE_FILE}"
   apps_run_root chmod 0644 "${APPS_COMPOSE_FILE}"
 }
