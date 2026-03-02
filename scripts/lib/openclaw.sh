@@ -521,7 +521,7 @@ openclaw_write_runtime_files() {
   app_builder_skill="$(openclaw_read_repo_template "skills/app_builder/SKILL.md")"
   definition_of_done="$(openclaw_read_repo_template "skills/app_builder/templates/AGENTS.md")"
   global_compose_template="$(openclaw_read_repo_template "skills/app_builder/templates/global-compose/docker-compose.yml")"
-  global_compose_env_template="$(openclaw_read_repo_template "skills/app_builder/templates/global-compose/.env")"
+  global_compose_env_template="$(openclaw_read_repo_template "skills/app_builder/templates/global-compose/.env.example")"
 
   openclaw_write_content_if_changed "${OPENCLAW_CONFIG_FILE}" "0600" "${config_json}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0640" "${env_file}" "root:${RUNTIME_USER}" || true
