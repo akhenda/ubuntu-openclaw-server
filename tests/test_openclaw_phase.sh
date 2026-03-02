@@ -67,6 +67,7 @@ OPENCLAW_ROOT_DIR=${edge_root}/openclaw
 OPENCLAW_SOURCE_DIR=${edge_root}/openclaw-src
 OPENCLAW_SOURCE_REPO=https://github.com/openclaw/openclaw.git
 OPENCLAW_SOURCE_REF=main
+OPENCLAW_SYNC_SOURCE=true
 OPENCLAW_RUNTIME_HOME=/home/openclaw
 OPENCLAW_NPM_PREFIX=/home/openclaw/.npm-global
 OPENCLAW_NPM_PACKAGE=openclaw
@@ -195,6 +196,35 @@ test_openclaw_phase_can_be_disabled() {
   assert_not_contains "$output_file" "openclaw/config/openclaw.json"
 }
 
+test_openclaw_phase_skips_source_sync_when_disabled() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' RETURN
+
+  local edge_root="$tmp_dir/root"
+  local env_file="$tmp_dir/.env"
+  local output_file="$tmp_dir/output.log"
+
+  make_valid_env "$env_file" "$edge_root"
+  make_common_state "$tmp_dir"
+  printf '\nOPENCLAW_SYNC_SOURCE=false\n' >> "$env_file"
+
+  OS_RELEASE_FILE="$tmp_dir/os-release" \
+  USER_PASSWD_FILE="$tmp_dir/passwd" \
+  USER_GROUP_FILE="$tmp_dir/group" \
+  SUDOERS_FILE="$tmp_dir/sudoers" \
+  SSHD_MAIN_CONFIG="$tmp_dir/sshd_config" \
+  SSHD_CONFIG_DIR="$tmp_dir/sshd_config.d" \
+  SSHD_HARDENING_FILE="$tmp_dir/sshd_config.d/99-openclaw-hardening.conf" \
+  CURRENT_LOGIN_USER="hendaz" \
+  DOCKER_ARCH=amd64 \
+  DOCKER_BIN=docker \
+  bash "$ROOT_DIR/scripts/install.sh" --config "$env_file" --dry-run >"$output_file" 2>&1
+
+  assert_contains "$output_file" "[openclaw] OPENCLAW_SYNC_SOURCE=false; skipping source repository sync"
+  assert_not_contains "$output_file" "git clone --branch main --depth 1 https://github.com/openclaw/openclaw.git ${edge_root}/openclaw-src"
+}
+
 test_openclaw_policy_injection_lock_is_enforced() {
   local tmp_dir
   tmp_dir="$(mktemp -d)"
@@ -303,6 +333,7 @@ JSON
 main() {
   test_openclaw_phase_dry_run_applies_runtime
   test_openclaw_phase_can_be_disabled
+  test_openclaw_phase_skips_source_sync_when_disabled
   test_openclaw_policy_injection_lock_is_enforced
   test_openclaw_wrapper_forwards_runtime_env
   test_openclaw_config_bootstraps_app_builder_policy

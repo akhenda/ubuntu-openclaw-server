@@ -563,6 +563,15 @@ openclaw_sync_source_repo() {
   openclaw_run_root git clone --branch "${OPENCLAW_SOURCE_REF}" --depth 1 "${OPENCLAW_SOURCE_REPO}" "${OPENCLAW_SOURCE_DIR}"
 }
 
+openclaw_sync_source_if_enabled() {
+  if [[ "${OPENCLAW_SYNC_SOURCE}" != "true" ]]; then
+    log_info "[openclaw] OPENCLAW_SYNC_SOURCE=false; skipping source repository sync"
+    return 0
+  fi
+
+  openclaw_sync_source_repo
+}
+
 openclaw_install_cli() {
   log_info "[openclaw] installing OpenClaw CLI (${OPENCLAW_NPM_PACKAGE}@${OPENCLAW_NPM_VERSION}) for ${RUNTIME_USER}"
   # Normalize GitHub git transport to HTTPS so npm git deps do not require SSH keys.
@@ -667,7 +676,7 @@ phase_openclaw() {
   fi
   openclaw_require_prereqs
   openclaw_ensure_directories
-  openclaw_sync_source_repo
+  openclaw_sync_source_if_enabled
   openclaw_install_cli
   openclaw_write_runtime_files
   openclaw_fix_runtime_permissions
