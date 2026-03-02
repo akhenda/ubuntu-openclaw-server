@@ -61,7 +61,9 @@ test_ensure_hub_script_contains_routes_and_homepage_runtime() {
   assert_contains_text "$ensure_hub_script" 'traefik.http.routers.hub.rule='
   assert_contains_text "$ensure_hub_script" 'homepage'
   assert_contains_text "$ensure_hub_script" 'host: ${SOCKET_PROXY_ENDPOINT}'
-  assert_contains_text "$ensure_hub_script" 'docker compose -f "${APPS_COMPOSE_FILE}" up -d "${HUB_SERVICE_NAME}"'
+  assert_contains_text "$ensure_hub_script" 'services_config_path = os.path.join(hub_config_dir, "services.yaml")'
+  assert_contains_text "$ensure_hub_script" 'OK: wrote hub services catalog ->'
+  assert_contains_text "$ensure_hub_script" 'docker compose --project-directory "${PROJECT_DIR}" -f "${APPS_COMPOSE_FILE}" up -d "${HUB_SERVICE_NAME}"'
   if grep -Fq '/var/run/docker.sock:/var/run/docker.sock:ro' <<< "$ensure_hub_script"; then
     echo "Assertion failed: ensure_hub.sh should not mount docker.sock directly" >&2
     exit 1

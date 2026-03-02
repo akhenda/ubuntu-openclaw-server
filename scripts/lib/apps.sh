@@ -232,6 +232,7 @@ hub_alias_host = os.environ.get("HUB_ALIAS_HOST", "").strip()
 hub_service_name = os.environ["HUB_SERVICE_NAME"]
 hub_image = os.environ["HUB_IMAGE"]
 hub_config_dir = os.environ["HUB_CONFIG_DIR"]
+services_config_path = os.path.join(hub_config_dir, "services.yaml")
 
 yaml = YAML()
 yaml.preserve_quotes = True
@@ -245,6 +246,86 @@ else:
 services = doc.setdefault("services", {})
 networks = doc.setdefault("networks", {})
 networks.setdefault(edge_network_name, {"external": True, "name": edge_network_name})
+
+def labels_to_map(raw_labels):
+    mapped = {}
+    if isinstance(raw_labels, list):
+        for item in raw_labels:
+            if not isinstance(item, str) or "=" not in item:
+                continue
+            key, value = item.split("=", 1)
+            mapped[key] = value
+    elif isinstance(raw_labels, dict):
+        for key, value in raw_labels.items():
+            mapped[str(key)] = str(value)
+    return mapped
+
+def extract_host_from_rule(rule):
+    if not isinstance(rule, str):
+        return ""
+    backtick = chr(96)
+    backtick_marker = f"Host({backtick}"
+    quote_marker = 'Host("'
+
+    if backtick_marker in rule:
+        return rule.split(backtick_marker, 1)[1].split(backtick, 1)[0]
+    if quote_marker in rule:
+        return rule.split(quote_marker, 1)[1].split('"', 1)[0]
+    return ""
+
+grouped_services = {}
+for service_name, service_cfg in services.items():
+    if service_name == hub_service_name:
+        continue
+
+    labels = labels_to_map(service_cfg.get("labels", []))
+    group_name = labels.get("homepage.group", "Apps").strip() or "Apps"
+    display_name = labels.get("homepage.name", service_name).strip() or service_name
+    description = labels.get("homepage.description", f"{display_name} app").strip()
+    icon = labels.get("homepage.icon", "").strip()
+    href = labels.get("homepage.href", "").strip()
+
+    if not href:
+        explicit_rule = labels.get(f"traefik.http.routers.{service_name}.rule", "")
+        host = extract_host_from_rule(explicit_rule)
+        if not host:
+            for key, value in labels.items():
+                if key.startswith("traefik.http.routers.") and key.endswith(".rule"):
+                    host = extract_host_from_rule(value)
+                    if host:
+                        break
+        if host:
+            href = f"https://{host}"
+
+    item_meta = {}
+    if icon:
+        item_meta["icon"] = icon
+    if href:
+        item_meta["href"] = href
+    if description:
+        item_meta["description"] = description
+
+    grouped_services.setdefault(group_name, []).append({display_name: item_meta})
+
+services_doc = []
+if grouped_services:
+    for group_name in sorted(grouped_services.keys(), key=lambda v: v.lower()):
+        entries = grouped_services[group_name]
+        entries.sort(key=lambda item: next(iter(item)).lower())
+        services_doc.append({group_name: entries})
+else:
+    services_doc = [
+        {
+            "Apps": [
+                {
+                    "No apps yet": {
+                        "icon": "mdi-rocket-launch",
+                        "description": "Deploy your first app to populate the hub.",
+                    }
+                }
+            ]
+        }
+    ]
 
 route_hosts = [hub_primary_host]
 if hub_alias_host and hub_alias_host != hub_primary_host:
@@ -275,7 +356,11 @@ services[hub_service_name] = {
 with open(compose_path, "w", encoding="utf-8") as f:
     yaml.dump(doc, f)
 
+with open(services_config_path, "w", encoding="utf-8") as f:
+    yaml.dump(services_doc, f)
+
 print(f"OK: ensured hub service routes -> {', '.join(route_hosts)}")
+print(f"OK: wrote hub services catalog -> {services_config_path}")
 PY
 
 PROJECT_DIR="\$(dirname "\${APPS_COMPOSE_FILE}")"
