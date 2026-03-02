@@ -172,6 +172,20 @@ HUB_SERVICE_NAME="hub"
 HUB_IMAGE="ghcr.io/gethomepage/homepage:latest"
 HUB_CONFIG_DIR="\${APPS_ROOT_DIR}/hub-config"
 SETTINGS_MARKER="# managed-by-openclaw-hub-style"
+SOCKET_PROXY_PROTOCOL="http"
+SOCKET_PROXY_ADDR="\${SOCKET_PROXY_ENDPOINT}"
+if [[ "\${SOCKET_PROXY_ADDR}" == https://* ]]; then
+  SOCKET_PROXY_PROTOCOL="https"
+  SOCKET_PROXY_ADDR="\${SOCKET_PROXY_ADDR#https://}"
+elif [[ "\${SOCKET_PROXY_ADDR}" == http://* ]]; then
+  SOCKET_PROXY_ADDR="\${SOCKET_PROXY_ADDR#http://}"
+fi
+SOCKET_PROXY_HOST="\${SOCKET_PROXY_ADDR%%:*}"
+SOCKET_PROXY_PORT="\${SOCKET_PROXY_ADDR##*:}"
+if [[ -z "\${SOCKET_PROXY_HOST}" || -z "\${SOCKET_PROXY_PORT}" || ! "\${SOCKET_PROXY_PORT}" =~ ^[0-9]+$ ]]; then
+  echo "Invalid SOCKET_PROXY_ENDPOINT (expected http[s]://host:port): \${SOCKET_PROXY_ENDPOINT}" >&2
+  exit 1
+fi
 
 mkdir -p "\${HUB_CONFIG_DIR}"
 
@@ -188,7 +202,6 @@ layout:
 background:
   image: https://images.unsplash.com/photo-1523966211575-eb4a01e7dd51?auto=format&fit=crop&w=1600&q=80
   blur: sm
-color: slate
 theme: dark
 headerStyle: boxedWidgets
 SETTINGS
@@ -201,7 +214,6 @@ layout:
   Apps:
     style: row
     columns: 4
-color: zinc
 theme: dark
 headerStyle: clean
 SETTINGS
@@ -217,7 +229,6 @@ layout:
 background:
   image: https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1600&q=80
   blur: md
-color: cyan
 theme: dark
 headerStyle: boxed
 SETTINGS
@@ -252,7 +263,9 @@ fi
 if [[ ! -f "\${HUB_CONFIG_DIR}/docker.yaml" ]]; then
 cat > "\${HUB_CONFIG_DIR}/docker.yaml" <<DOCKER
 local:
-  host: \${SOCKET_PROXY_ENDPOINT}
+  host: \${SOCKET_PROXY_HOST}
+  port: \${SOCKET_PROXY_PORT}
+  protocol: \${SOCKET_PROXY_PROTOCOL}
 DOCKER
 fi
 
