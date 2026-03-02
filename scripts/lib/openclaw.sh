@@ -84,6 +84,53 @@ openclaw_write_content_if_changed() {
   return 0
 }
 
+openclaw_write_content_if_missing() {
+  local target="$1"
+  local mode="$2"
+  local content="$3"
+  local owner="${4:-root:root}"
+
+  if [[ -f "${target}" ]]; then
+    log_info "[openclaw] keeping existing ${target}"
+    return 1
+  fi
+
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    log_info "[openclaw] [dry-run] would create ${target}"
+    return 0
+  fi
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+  printf '%s\n' "${content}" > "${tmp_file}"
+  openclaw_run_root install -d -m 0755 "$(dirname "${target}")"
+  openclaw_run_root cp "${tmp_file}" "${target}"
+  openclaw_run_root chown "${owner}" "${target}"
+  openclaw_run_root chmod "${mode}" "${target}"
+  rm -f "${tmp_file}"
+  return 0
+}
+
+openclaw_repo_root() {
+  if [[ -n "${REPO_ROOT:-}" ]]; then
+    printf '%s' "${REPO_ROOT}"
+    return 0
+  fi
+
+  local lib_dir
+  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  printf '%s' "${lib_dir}"
+}
+
+openclaw_read_repo_template() {
+  local relative_path="$1"
+  local root
+  root="$(openclaw_repo_root)"
+  local template_path="${root}/${relative_path}"
+  [[ -f "${template_path}" ]] || die "[openclaw] template not found: ${template_path}"
+  cat "${template_path}"
+}
+
 openclaw_env_file_path() {
   printf '%s/.env' "${OPENCLAW_ROOT_DIR}"
 }
@@ -96,6 +143,30 @@ openclaw_workspace_publish_script_path() {
   local runtime_home
   runtime_home="$(openclaw_runtime_home)"
   printf '%s/.openclaw/workspace/policies/deploy/publish_workspace_app.sh' "${runtime_home}"
+}
+
+openclaw_workspace_app_builder_policy_path() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+  printf '%s/.openclaw/workspace/policies/deploy/APP_BUILDER.md' "${runtime_home}"
+}
+
+openclaw_workspace_skill_app_builder_path() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+  printf '%s/.openclaw/skills/app_builder/SKILL.md' "${runtime_home}"
+}
+
+openclaw_host_definition_of_done_path() {
+  printf '%s/AGENTS.md' "${EDGE_ROOT_DIR}"
+}
+
+openclaw_host_global_compose_template_path() {
+  printf '%s/infra/global-compose/docker-compose.yml' "${EDGE_ROOT_DIR}"
+}
+
+openclaw_host_global_compose_env_template_path() {
+  printf '%s/infra/global-compose/.env' "${EDGE_ROOT_DIR}"
 }
 
 openclaw_render_config_json() {
@@ -126,7 +197,7 @@ openclaw_render_config_json() {
       "entries": {
         "bootstrap-extra-files": {
           "enabled": true,
-          "paths": ["policies/deploy/AGENTS.md"]
+          "paths": ["policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md"]
         }
       }
     }
@@ -242,10 +313,83 @@ Do not ask the operator to manually copy app files from workspace to /opt paths 
 - publish_workspace_app.sh fails, and
 - you include the exact failing error first.
 
+## Runtime preflight is mandatory
+Before any deploy action, determine whether host exec is available.
+- If host exec is unavailable (direct sandbox runtime):
+  - You MAY scaffold files in workspace.
+  - You MUST NOT claim deployment succeeded.
+  - You MUST ask operator to run exactly:
+    ${runtime_home}/.openclaw/workspace/policies/deploy/publish_workspace_app.sh <appName> <port>
+- If host exec is available:
+  - You MUST run publish_workspace_app.sh yourself.
+
+## Definition of done
+An app task is DONE only if:
+1. Project exists in workspace: ${runtime_home}/.openclaw/workspace/<appName>
+2. Dockerization exists (Dockerfile + .dockerignore as needed)
+3. Deploy command completed:
+   ${runtime_home}/.openclaw/workspace/policies/deploy/publish_workspace_app.sh <appName> <port>
+4. App container is up in ${APPS_COMPOSE_FILE}
+5. URL responds: https://<appName>.${APPS_DOMAIN}
+6. Report includes:
+   - repo/app path
+   - deploy command used
+   - test/build commands + outcome
+   - URL + healthcheck result
+   - logs command: docker logs -f <container>
+
 ## Never publish ports
 Do not add "ports:" for apps.
 All traffic must go through Traefik + Cloudflare Tunnel.
 EOF_POLICY
+}
+
+openclaw_render_app_builder_policy_md() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+
+  cat <<EOF_APP_BUILDER
+# App Builder Policy (OpenClaw Host Contract)
+
+Use this policy when building, testing, and deploying apps for this host.
+
+## Canonical paths
+- Workspace root: ${runtime_home}/.openclaw/workspace
+- Deploy policy: ${runtime_home}/.openclaw/workspace/policies/deploy/AGENTS.md
+- Publish helper: ${runtime_home}/.openclaw/workspace/policies/deploy/publish_workspace_app.sh
+- Apps compose: ${APPS_COMPOSE_FILE}
+- Edge stack (do not modify for app deploys): ${EDGE_ROOT_DIR}/edge/docker-compose.yml
+
+## Standard workflow
+1. Create or update app in: ${runtime_home}/.openclaw/workspace/<appName>
+2. Ensure Dockerfile and runtime command bind to 0.0.0.0 on internal app port.
+3. Run build/tests in workspace first.
+4. Deploy using publish helper:
+   ${runtime_home}/.openclaw/workspace/policies/deploy/publish_workspace_app.sh <appName> <port>
+5. Verify:
+   - docker compose -f ${APPS_COMPOSE_FILE} ps
+   - curl -I https://<appName>.${APPS_DOMAIN}
+6. Report concise outcome and exact commands.
+
+## Runtime boundary rule
+If running in direct sandbox runtime (no host exec), do not pretend deployment happened.
+Return the single operator command required to deploy on host.
+
+## Required response format
+### Summary
+- app name
+- workspace path
+- deployment status
+- URL
+
+### Checks
+- build/test commands run
+- healthcheck result
+
+### Ops
+- container/log commands
+- any DNS/proxy issue if observed
+EOF_APP_BUILDER
 }
 
 openclaw_render_workspace_publish_script() {
@@ -362,17 +506,32 @@ openclaw_write_runtime_files() {
   local config_json
   local env_file
   local policy_file
+  local app_builder_policy_file
   local publish_script
+  local app_builder_skill
+  local definition_of_done
+  local global_compose_template
+  local global_compose_env_template
 
   config_json="$(openclaw_render_config_json)"
   env_file="$(openclaw_render_env_file)"
   policy_file="$(openclaw_render_policy_agents_md)"
+  app_builder_policy_file="$(openclaw_render_app_builder_policy_md)"
   publish_script="$(openclaw_render_workspace_publish_script)"
+  app_builder_skill="$(openclaw_read_repo_template "skills/app_builder/SKILL.md")"
+  definition_of_done="$(openclaw_read_repo_template "skills/app_builder/templates/AGENTS.md")"
+  global_compose_template="$(openclaw_read_repo_template "skills/app_builder/templates/global-compose/docker-compose.yml")"
+  global_compose_env_template="$(openclaw_read_repo_template "skills/app_builder/templates/global-compose/.env")"
 
   openclaw_write_content_if_changed "${OPENCLAW_CONFIG_FILE}" "0600" "${config_json}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0640" "${env_file}" "root:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "${OPENCLAW_POLICY_FILE}" "0644" "${policy_file}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
+  openclaw_write_content_if_changed "$(openclaw_workspace_app_builder_policy_path)" "0644" "${app_builder_policy_file}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "$(openclaw_workspace_publish_script_path)" "0755" "${publish_script}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
+  openclaw_write_content_if_changed "$(openclaw_workspace_skill_app_builder_path)" "0644" "${app_builder_skill}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
+  openclaw_write_content_if_missing "$(openclaw_host_definition_of_done_path)" "0644" "${definition_of_done}" "root:root" || true
+  openclaw_write_content_if_missing "$(openclaw_host_global_compose_template_path)" "0644" "${global_compose_template}" "root:root" || true
+  openclaw_write_content_if_missing "$(openclaw_host_global_compose_env_template_path)" "0644" "${global_compose_env_template}" "root:root" || true
 }
 
 openclaw_fix_runtime_permissions() {
@@ -386,7 +545,9 @@ openclaw_fix_runtime_permissions() {
   openclaw_run_root chmod 0640 "$(openclaw_env_file_path)"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_CONFIG_FILE}"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_POLICY_FILE}"
+  openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "$(openclaw_workspace_app_builder_policy_path)"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "$(openclaw_workspace_publish_script_path)"
+  openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "$(openclaw_workspace_skill_app_builder_path)"
   openclaw_run_root chmod 0600 "${OPENCLAW_CONFIG_FILE}"
 }
 

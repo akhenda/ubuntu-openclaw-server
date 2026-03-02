@@ -172,11 +172,18 @@ verify_openclaw_artifacts() {
   verify_require_file "$(openclaw_env_file_path)" "OpenClaw env file"
   verify_require_file "$(openclaw_cli_wrapper_path)" "OpenClaw CLI wrapper"
   verify_require_file "${OPENCLAW_POLICY_FILE}" "OpenClaw deploy policy file"
+  verify_require_file "$(openclaw_workspace_app_builder_policy_path)" "OpenClaw app builder policy file"
   verify_require_file "$(openclaw_workspace_publish_script_path)" "OpenClaw workspace publish helper"
+  verify_require_file "$(openclaw_workspace_skill_app_builder_path)" "OpenClaw app builder skill"
+  verify_require_file "$(openclaw_host_definition_of_done_path)" "OpenClaw definition of done"
+  verify_require_file "$(openclaw_host_global_compose_template_path)" "OpenClaw global compose template"
+  verify_require_file "$(openclaw_host_global_compose_env_template_path)" "OpenClaw global compose env template"
 
   verify_require_contains "${OPENCLAW_CONFIG_FILE}" '"bootstrap-extra-files"' "OpenClaw config"
   verify_require_contains "${OPENCLAW_POLICY_FILE}" 'Never publish ports' "OpenClaw deploy policy file"
   verify_require_contains "${OPENCLAW_POLICY_FILE}" 'publish_workspace_app.sh' "OpenClaw deploy policy file"
+  verify_require_contains "$(openclaw_workspace_app_builder_policy_path)" 'Runtime boundary rule' "OpenClaw app builder policy file"
+  verify_require_contains "$(openclaw_workspace_skill_app_builder_path)" 'Skill: App Builder + Preview Runner (OpenClaw)' "OpenClaw app builder skill"
 }
 
 verify_apps_artifacts() {

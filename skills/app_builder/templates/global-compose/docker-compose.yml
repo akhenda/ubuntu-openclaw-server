@@ -1,0 +1,55 @@
+version: "3.9"
+
+networks:
+  edge:
+    external: true
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    command:
+      - --api.dashboard=true
+      - --api.insecure=false
+      - --ping=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # If you use ACME certs directly in Traefik (optional):
+      # - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      # - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      # - --certificatesresolvers.le.acme.httpchallenge=true
+      # - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    networks:
+      - edge
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik.rule=Host(`traefik.${BASE_DOMAIN}`)
+      - traefik.http.routers.traefik.entrypoints=websecure
+      # If using ACME:
+      # - traefik.http.routers.traefik.tls.certresolver=le
+      - traefik.http.routers.traefik.tls=true
+      - traefik.http.routers.traefik.service=api@internal
+
+  # Example App Service Pattern
+  # app_myapp:
+  #   build:
+  #     context: /opt/openclaw/workspace/projects/myapp
+  #     dockerfile: Dockerfile
+  #   container_name: app_myapp
+  #   restart: unless-stopped
+  #   networks:
+  #     - edge
+  #   labels:
+  #     - traefik.enable=true
+  #     - traefik.http.routers.myapp.rule=Host(`myapp.${BASE_DOMAIN}`)
+  #     - traefik.http.routers.myapp.entrypoints=websecure
+  #     - traefik.http.routers.myapp.tls=true
+  #     - traefik.http.services.myapp.loadbalancer.server.port=3000

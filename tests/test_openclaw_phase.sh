@@ -155,7 +155,12 @@ test_openclaw_phase_dry_run_applies_runtime() {
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/openclaw.json"
   assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/.env"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/AGENTS.md"
+  assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/APP_BUILDER.md"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/publish_workspace_app.sh"
+  assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/skills/app_builder/SKILL.md"
+  assert_contains "$output_file" "[openclaw] [dry-run] would create /opt/openclaw/AGENTS.md"
+  assert_contains "$output_file" "[openclaw] [dry-run] would create /opt/openclaw/infra/global-compose/docker-compose.yml"
+  assert_contains "$output_file" "[openclaw] [dry-run] would create /opt/openclaw/infra/global-compose/.env"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /usr/local/bin/openclaw"
   assert_contains "$output_file" "[openclaw] OpenClaw runtime setup complete"
 }
@@ -228,11 +233,21 @@ test_openclaw_wrapper_forwards_runtime_env() {
   assert_text_contains "$rendered" 'OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_FILE:-}"'
 }
 
+test_openclaw_config_bootstraps_app_builder_policy() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/openclaw.sh'; \
+    BOT_NAME=mckay; APPS_DOMAIN=akhenda.net; TRAEFIK_IP=172.30.0.2; \
+    openclaw_render_config_json")"
+
+  assert_text_contains "$rendered" '"policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md"'
+}
+
 main() {
   test_openclaw_phase_dry_run_applies_runtime
   test_openclaw_phase_can_be_disabled
   test_openclaw_policy_injection_lock_is_enforced
   test_openclaw_wrapper_forwards_runtime_env
+  test_openclaw_config_bootstraps_app_builder_policy
   echo "PASS: test_openclaw_phase.sh"
 }
 
