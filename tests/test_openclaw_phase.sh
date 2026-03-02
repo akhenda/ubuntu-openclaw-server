@@ -155,6 +155,7 @@ test_openclaw_phase_dry_run_applies_runtime() {
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/openclaw.json"
   assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/.env"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/AGENTS.md"
+  assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/publish_workspace_app.sh"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /usr/local/bin/openclaw"
   assert_contains "$output_file" "[openclaw] OpenClaw runtime setup complete"
 }

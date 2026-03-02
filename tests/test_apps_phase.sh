@@ -130,11 +130,14 @@ test_apps_phase_dry_run_generates_registry_and_helpers() {
   bash "$ROOT_DIR/scripts/install.sh" --config "$env_file" --dry-run >"$output_file" 2>&1
 
   assert_contains "$output_file" "[apps] configuring apps registry and helper scripts"
+  assert_contains "$output_file" "install -d -m 0755 -o openclaw -g openclaw ${edge_root}/apps"
   assert_contains "$output_file" "python3 -m venv ${edge_root}/.venv"
   assert_contains "$output_file" "${edge_root}/.venv/bin/pip install ruamel.yaml"
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/apps/docker-compose.yml"
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/register_app.py"
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/deploy_app.sh"
+  assert_contains "$output_file" "[apps] ensuring app runtime paths are owned by openclaw"
+  assert_contains "$output_file" "chown openclaw:openclaw ${edge_root}/apps/docker-compose.yml"
   assert_contains "$output_file" "[apps] ensuring hub service exists during install"
   assert_contains "$output_file" "/bin/bash ${edge_root}/bin/ensure_hub.sh"
   assert_contains "$output_file" "[apps] apps registry setup complete"

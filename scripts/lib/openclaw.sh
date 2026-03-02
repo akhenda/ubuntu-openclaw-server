@@ -92,6 +92,12 @@ openclaw_cli_wrapper_path() {
   printf '%s' "/usr/local/bin/openclaw"
 }
 
+openclaw_workspace_publish_script_path() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+  printf '%s/.openclaw/workspace/policies/deploy/publish_workspace_app.sh' "${runtime_home}"
+}
+
 openclaw_render_config_json() {
   local runtime_home
   runtime_home="$(openclaw_runtime_home)"
@@ -198,6 +204,9 @@ EOF_ENV
 }
 
 openclaw_render_policy_agents_md() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+
   cat <<EOF_POLICY
 # Deployment Rules (MUST FOLLOW)
 
@@ -215,12 +224,12 @@ Never create an app named:
 ## When you create a new runnable HTTP app
 You MUST do all of the following:
 
-1. Create the project directory:
-   ${EDGE_ROOT_DIR}/apps/<appName>/
-2. Add a Dockerfile (and any required source files) so the app can build.
+1. Create the project directory INSIDE YOUR WORKSPACE:
+   ${runtime_home}/.openclaw/workspace/<appName>/
+2. Add a Dockerfile (and any required source files) so the app can build from that workspace folder.
 3. Determine the internal app port (for example 3000).
-4. Register + deploy using:
-   ${EDGE_ROOT_DIR}/bin/deploy_app.sh <appName> <port>
+4. Publish workspace app + deploy using:
+   ${runtime_home}/.openclaw/workspace/policies/deploy/publish_workspace_app.sh <appName> <port>
 5. Hub routing is mandatory:
    - Ensure hub exists at https://${HUB_PRIMARY_HOST}
    - App cards must resolve to https://<appName>.${APPS_DOMAIN}
@@ -228,10 +237,62 @@ You MUST do all of the following:
 7. Send ${REPORT_OWNER_NAME} a deployment report using:
    ${EDGE_ROOT_DIR}/bin/report.sh "<title>" "<body>"
 
+## Never ask operator for manual copy unless publish script fails
+Do not ask the operator to manually copy app files from workspace to /opt paths unless:
+- publish_workspace_app.sh fails, and
+- you include the exact failing error first.
+
 ## Never publish ports
 Do not add "ports:" for apps.
 All traffic must go through Traefik + Cloudflare Tunnel.
 EOF_POLICY
+}
+
+openclaw_render_workspace_publish_script() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+
+  cat <<EOF_PUBLISH
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="\${1:?app name required}"
+APP_PORT="\${2:?internal port required (e.g. 3000)}"
+
+WORKSPACE_ROOT="${runtime_home}/.openclaw/workspace"
+SRC_DIR="\${WORKSPACE_ROOT}/\${APP_NAME}"
+DEST_ROOT="${APPS_ROOT_DIR}"
+DEST_DIR="\${DEST_ROOT}/\${APP_NAME}"
+DEPLOY_SCRIPT="${APPS_DEPLOY_SCRIPT}"
+
+if [[ ! -d "\${SRC_DIR}" ]]; then
+  echo "Source app directory not found: \${SRC_DIR}" >&2
+  exit 1
+fi
+
+if [[ ! -x "\${DEPLOY_SCRIPT}" ]]; then
+  echo "Deploy script not executable: \${DEPLOY_SCRIPT}" >&2
+  exit 1
+fi
+
+mkdir -p "\${DEST_DIR}"
+
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete \
+    --exclude ".git" \
+    --exclude "node_modules" \
+    --exclude ".next" \
+    --exclude "dist" \
+    --exclude "build" \
+    "\${SRC_DIR}/" "\${DEST_DIR}/"
+else
+  rm -rf "\${DEST_DIR}"
+  mkdir -p "\${DEST_DIR}"
+  cp -a "\${SRC_DIR}/." "\${DEST_DIR}/"
+fi
+
+"\${DEPLOY_SCRIPT}" "\${APP_NAME}" "\${APP_PORT}"
+EOF_PUBLISH
 }
 
 openclaw_require_prereqs() {
@@ -301,14 +362,17 @@ openclaw_write_runtime_files() {
   local config_json
   local env_file
   local policy_file
+  local publish_script
 
   config_json="$(openclaw_render_config_json)"
   env_file="$(openclaw_render_env_file)"
   policy_file="$(openclaw_render_policy_agents_md)"
+  publish_script="$(openclaw_render_workspace_publish_script)"
 
   openclaw_write_content_if_changed "${OPENCLAW_CONFIG_FILE}" "0600" "${config_json}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0640" "${env_file}" "root:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "${OPENCLAW_POLICY_FILE}" "0644" "${policy_file}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
+  openclaw_write_content_if_changed "$(openclaw_workspace_publish_script_path)" "0755" "${publish_script}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
 }
 
 openclaw_fix_runtime_permissions() {
@@ -322,6 +386,7 @@ openclaw_fix_runtime_permissions() {
   openclaw_run_root chmod 0640 "$(openclaw_env_file_path)"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_CONFIG_FILE}"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_POLICY_FILE}"
+  openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "$(openclaw_workspace_publish_script_path)"
   openclaw_run_root chmod 0600 "${OPENCLAW_CONFIG_FILE}"
 }
 

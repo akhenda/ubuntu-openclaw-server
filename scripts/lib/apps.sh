@@ -334,8 +334,15 @@ EOF
 }
 
 apps_ensure_layout() {
-  apps_run_root install -d -m 0755 "${APPS_ROOT_DIR}"
+  apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${APPS_ROOT_DIR}"
   apps_run_root install -d -m 0755 "$(dirname "${APPS_REGISTER_SCRIPT}")"
+}
+
+apps_fix_runtime_permissions() {
+  log_info "[apps] ensuring app runtime paths are owned by ${RUNTIME_USER}"
+  apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${APPS_ROOT_DIR}"
+  apps_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${APPS_COMPOSE_FILE}"
+  apps_run_root chmod 0644 "${APPS_COMPOSE_FILE}"
 }
 
 apps_setup_venv_if_enabled() {
@@ -398,6 +405,7 @@ phase_apps() {
   apps_ensure_layout
   apps_setup_venv_if_enabled
   apps_write_runtime_files
+  apps_fix_runtime_permissions
   apps_ensure_hub_during_install
   log_info "[apps] apps registry setup complete"
 }

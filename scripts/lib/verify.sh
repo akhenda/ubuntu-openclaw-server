@@ -172,9 +172,11 @@ verify_openclaw_artifacts() {
   verify_require_file "$(openclaw_env_file_path)" "OpenClaw env file"
   verify_require_file "$(openclaw_cli_wrapper_path)" "OpenClaw CLI wrapper"
   verify_require_file "${OPENCLAW_POLICY_FILE}" "OpenClaw deploy policy file"
+  verify_require_file "$(openclaw_workspace_publish_script_path)" "OpenClaw workspace publish helper"
 
   verify_require_contains "${OPENCLAW_CONFIG_FILE}" '"bootstrap-extra-files"' "OpenClaw config"
   verify_require_contains "${OPENCLAW_POLICY_FILE}" 'Never publish ports' "OpenClaw deploy policy file"
+  verify_require_contains "${OPENCLAW_POLICY_FILE}" 'publish_workspace_app.sh' "OpenClaw deploy policy file"
 }
 
 verify_apps_artifacts() {
