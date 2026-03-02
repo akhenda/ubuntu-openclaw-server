@@ -191,6 +191,22 @@ verify_openclaw_artifacts() {
   verify_require_contains "$(openclaw_workspace_skill_app_builder_path)" 'Skill: App Builder + Preview Runner (OpenClaw)' "OpenClaw app builder skill"
 }
 
+verify_openclaw_runtime_conflicts() {
+  if [[ "${OPENCLAW_ENABLE}" != "true" ]]; then
+    return 0
+  fi
+
+  if ! command_exists docker; then
+    return 0
+  fi
+
+  local legacy_containers=""
+  legacy_containers="$(verify_run_root docker ps --format '{{.Names}}' 2>/dev/null | grep -E '^openclaw-openclaw-(gateway|cli)-' || true)"
+  if [[ -n "${legacy_containers}" ]]; then
+    verify_record_issue "legacy docker OpenClaw containers are still running (stop/remove openclaw-openclaw-gateway/cli containers to avoid split state)"
+  fi
+}
+
 verify_apps_artifacts() {
   if [[ "${APPS_ENABLE}" != "true" ]]; then
     return 0
@@ -312,6 +328,7 @@ phase_verify() {
   verify_edge_artifacts
   verify_dns_artifacts
   verify_openclaw_artifacts
+  verify_openclaw_runtime_conflicts
   verify_apps_artifacts
   verify_report_artifacts
   verify_systemd_artifacts

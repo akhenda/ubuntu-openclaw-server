@@ -572,6 +572,32 @@ openclaw_sync_source_if_enabled() {
   openclaw_sync_source_repo
 }
 
+openclaw_cleanup_legacy_docker_runtime() {
+  local docker_cmd="docker"
+  local legacy_compose_file="${OPENCLAW_ROOT_DIR}/docker-compose.yml"
+
+  if ! command_exists "${docker_cmd}"; then
+    log_warn "[openclaw] docker command not found; skipping legacy runtime cleanup"
+    return 0
+  fi
+
+  if [[ -f "${legacy_compose_file}" ]]; then
+    log_info "[openclaw] stopping legacy docker-based OpenClaw stack (if present)"
+    openclaw_run_root "${docker_cmd}" compose -f "${legacy_compose_file}" down --remove-orphans || true
+  fi
+
+  local legacy_names=""
+  legacy_names="$(openclaw_run_root "${docker_cmd}" ps -a --format '{{.Names}}' 2>/dev/null | grep -E '^openclaw-openclaw-(gateway|cli)-' || true)"
+  if [[ -n "${legacy_names}" ]]; then
+    log_info "[openclaw] removing legacy OpenClaw docker containers"
+    local name=""
+    while IFS= read -r name; do
+      [[ -n "${name}" ]] || continue
+      openclaw_run_root "${docker_cmd}" rm -f "${name}" || true
+    done <<< "${legacy_names}"
+  fi
+}
+
 openclaw_install_cli() {
   log_info "[openclaw] installing OpenClaw CLI (${OPENCLAW_NPM_PACKAGE}@${OPENCLAW_NPM_VERSION}) for ${RUNTIME_USER}"
   # Normalize GitHub git transport to HTTPS so npm git deps do not require SSH keys.
@@ -675,6 +701,7 @@ phase_openclaw() {
     log_info "[openclaw] OPENCLAW_BUILD_IMAGE=true is ignored in host-runtime mode"
   fi
   openclaw_require_prereqs
+  openclaw_cleanup_legacy_docker_runtime
   openclaw_ensure_directories
   openclaw_sync_source_if_enabled
   openclaw_install_cli
