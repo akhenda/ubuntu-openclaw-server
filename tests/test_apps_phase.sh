@@ -200,9 +200,44 @@ test_apps_phase_can_be_disabled() {
   assert_not_contains "$output_file" "register_app.py"
 }
 
+test_apps_phase_preserves_existing_compose_file() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' RETURN
+
+  local edge_root="$tmp_dir/root"
+  local env_file="$tmp_dir/.env"
+  local output_file="$tmp_dir/output.log"
+
+  make_valid_env "$env_file" "$edge_root"
+  make_common_state "$tmp_dir"
+
+  mkdir -p "${edge_root}/apps"
+  cat > "${edge_root}/apps/docker-compose.yml" <<'EOF'
+services:
+  sample-app:
+    image: sample:latest
+EOF
+
+  OS_RELEASE_FILE="$tmp_dir/os-release" \
+  USER_PASSWD_FILE="$tmp_dir/passwd" \
+  USER_GROUP_FILE="$tmp_dir/group" \
+  SUDOERS_FILE="$tmp_dir/sudoers" \
+  SSHD_MAIN_CONFIG="$tmp_dir/sshd_config" \
+  SSHD_CONFIG_DIR="$tmp_dir/sshd_config.d" \
+  SSHD_HARDENING_FILE="$tmp_dir/sshd_config.d/99-openclaw-hardening.conf" \
+  CURRENT_LOGIN_USER="hendaz" \
+  DOCKER_ARCH=amd64 \
+  bash "$ROOT_DIR/scripts/install.sh" --config "$env_file" --dry-run >"$output_file" 2>&1
+
+  assert_contains "$output_file" "[apps] preserving existing compose file at ${edge_root}/apps/docker-compose.yml"
+  assert_not_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/apps/docker-compose.yml"
+}
+
 main() {
   test_apps_phase_dry_run_generates_registry_and_helpers
   test_apps_phase_can_be_disabled
+  test_apps_phase_preserves_existing_compose_file
   test_apps_deploy_script_uses_explicit_project_directory
   echo "PASS: test_apps_phase.sh"
 }

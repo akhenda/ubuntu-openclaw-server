@@ -469,7 +469,11 @@ apps_write_runtime_files() {
   ensure_hub_script="$(apps_render_ensure_hub_script)"
   deploy_script="$(apps_render_deploy_script)"
 
-  apps_write_content_if_changed "${APPS_COMPOSE_FILE}" "0644" "${compose_skeleton}" || true
+  if [[ -f "${APPS_COMPOSE_FILE}" ]]; then
+    log_info "[apps] preserving existing compose file at ${APPS_COMPOSE_FILE}"
+  else
+    apps_write_content_if_changed "${APPS_COMPOSE_FILE}" "0644" "${compose_skeleton}" || true
+  fi
   apps_write_content_if_changed "${APPS_REGISTER_SCRIPT}" "0755" "${register_script}" || true
   apps_write_content_if_changed "${DNS_BIN_DIR}/ensure_hub.sh" "0755" "${ensure_hub_script}" || true
   apps_write_content_if_changed "${APPS_DEPLOY_SCRIPT}" "0755" "${deploy_script}" || true
