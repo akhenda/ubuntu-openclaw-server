@@ -193,6 +193,12 @@ openclaw_workspace_app_builder_policy_path() {
   printf '%s/.openclaw/workspace/policies/deploy/APP_BUILDER.md' "${runtime_home}"
 }
 
+openclaw_workspace_root_app_builder_policy_path() {
+  local runtime_home
+  runtime_home="$(openclaw_runtime_home)"
+  printf '%s/.openclaw/workspace/APP_BUILDER.md' "${runtime_home}"
+}
+
 openclaw_workspace_skill_app_builder_path() {
   local runtime_home
   runtime_home="$(openclaw_runtime_home)"
@@ -239,7 +245,7 @@ openclaw_render_config_json() {
       "entries": {
         "bootstrap-extra-files": {
           "enabled": true,
-          "paths": ["policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md"]
+          "paths": ["policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md", "APP_BUILDER.md"]
         }
       }
     }
@@ -578,6 +584,7 @@ openclaw_write_runtime_files() {
   openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0640" "${env_file}" "root:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "${OPENCLAW_POLICY_FILE}" "0644" "${policy_file}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "$(openclaw_workspace_app_builder_policy_path)" "0644" "${app_builder_policy_file}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
+  openclaw_write_content_if_changed "$(openclaw_workspace_root_app_builder_policy_path)" "0644" "${app_builder_policy_file}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "$(openclaw_workspace_publish_script_path)" "0755" "${publish_script}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "$(openclaw_workspace_skill_app_builder_path)" "0644" "${app_builder_skill}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_missing "$(openclaw_host_definition_of_done_path)" "0644" "${definition_of_done}" "root:root" || true
@@ -597,6 +604,7 @@ openclaw_fix_runtime_permissions() {
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_CONFIG_FILE}"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "${OPENCLAW_POLICY_FILE}"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "$(openclaw_workspace_app_builder_policy_path)"
+  openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "$(openclaw_workspace_root_app_builder_policy_path)"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "$(openclaw_workspace_publish_script_path)"
   openclaw_run_root chown "${RUNTIME_USER}:${RUNTIME_USER}" "$(openclaw_workspace_skill_app_builder_path)"
   openclaw_run_root chmod 0600 "${OPENCLAW_CONFIG_FILE}"

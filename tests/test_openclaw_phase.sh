@@ -156,6 +156,7 @@ test_openclaw_phase_dry_run_applies_runtime() {
   assert_contains "$output_file" "[openclaw] [dry-run] would update ${edge_root}/openclaw/.env"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/AGENTS.md"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/APP_BUILDER.md"
+  assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/APP_BUILDER.md"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/workspace/policies/deploy/publish_workspace_app.sh"
   assert_contains "$output_file" "[openclaw] [dry-run] would update /home/openclaw/.openclaw/skills/app_builder/SKILL.md"
   assert_contains "$output_file" "[openclaw] [dry-run] would create /opt/openclaw/AGENTS.md"
@@ -239,7 +240,7 @@ test_openclaw_config_bootstraps_app_builder_policy() {
     BOT_NAME=mckay; APPS_DOMAIN=akhenda.net; TRAEFIK_IP=172.30.0.2; \
     openclaw_render_config_json")"
 
-  assert_text_contains "$rendered" '"policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md"'
+  assert_text_contains "$rendered" '"policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md", "APP_BUILDER.md"'
 }
 
 test_openclaw_renders_global_compose_env_with_real_values() {
@@ -276,12 +277,13 @@ JSON
   local merged
   merged="$(bash -lc "source '$ROOT_DIR/scripts/lib/common.sh'; source '$ROOT_DIR/scripts/lib/openclaw.sh'; \
     OPENCLAW_CONFIG_FILE='$cfg_file'; DRY_RUN=false; \
-    desired='{\"hooks\":{\"internal\":{\"entries\":{\"bootstrap-extra-files\":{\"enabled\":true,\"paths\":[\"policies/deploy/AGENTS.md\",\"policies/deploy/APP_BUILDER.md\"]}}}}}'; \
+    desired='{\"hooks\":{\"internal\":{\"entries\":{\"bootstrap-extra-files\":{\"enabled\":true,\"paths\":[\"policies/deploy/AGENTS.md\",\"policies/deploy/APP_BUILDER.md\",\"APP_BUILDER.md\"]}}}}}'; \
     openclaw_merge_config_json_with_existing \"\$desired\"")"
 
   assert_text_contains "$merged" '"completed": true'
   assert_text_contains "$merged" '"policies/deploy/AGENTS.md"'
   assert_text_contains "$merged" '"policies/deploy/APP_BUILDER.md"'
+  assert_text_contains "$merged" '"APP_BUILDER.md"'
 }
 
 main() {
