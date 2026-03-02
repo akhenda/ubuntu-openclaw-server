@@ -242,12 +242,23 @@ test_openclaw_config_bootstraps_app_builder_policy() {
   assert_text_contains "$rendered" '"policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md"'
 }
 
+test_openclaw_renders_global_compose_env_with_real_values() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/openclaw.sh'; \
+    DOMAIN=akhenda.net; APPS_DOMAIN=akhenda.net; BOT_NAME=mckay; \
+    openclaw_render_global_compose_env")"
+
+  assert_text_contains "$rendered" 'BASE_DOMAIN=akhenda.net'
+  assert_text_contains "$rendered" 'BOT_NAME=mckay'
+}
+
 main() {
   test_openclaw_phase_dry_run_applies_runtime
   test_openclaw_phase_can_be_disabled
   test_openclaw_policy_injection_lock_is_enforced
   test_openclaw_wrapper_forwards_runtime_env
   test_openclaw_config_bootstraps_app_builder_policy
+  test_openclaw_renders_global_compose_env_with_real_values
   echo "PASS: test_openclaw_phase.sh"
 }
 

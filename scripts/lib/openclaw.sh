@@ -392,6 +392,14 @@ Return the single operator command required to deploy on host.
 EOF_APP_BUILDER
 }
 
+openclaw_render_global_compose_env() {
+  cat <<EOF_GLOBAL_COMPOSE_ENV
+BASE_DOMAIN=${APPS_DOMAIN}
+ACME_EMAIL=admin@${DOMAIN}
+BOT_NAME=${BOT_NAME}
+EOF_GLOBAL_COMPOSE_ENV
+}
+
 openclaw_render_workspace_publish_script() {
   local runtime_home
   runtime_home="$(openclaw_runtime_home)"
@@ -511,7 +519,7 @@ openclaw_write_runtime_files() {
   local app_builder_skill
   local definition_of_done
   local global_compose_template
-  local global_compose_env_template
+  local global_compose_env
 
   config_json="$(openclaw_render_config_json)"
   env_file="$(openclaw_render_env_file)"
@@ -521,7 +529,7 @@ openclaw_write_runtime_files() {
   app_builder_skill="$(openclaw_read_repo_template "skills/app_builder/SKILL.md")"
   definition_of_done="$(openclaw_read_repo_template "skills/app_builder/templates/AGENTS.md")"
   global_compose_template="$(openclaw_read_repo_template "skills/app_builder/templates/global-compose/docker-compose.yml")"
-  global_compose_env_template="$(openclaw_read_repo_template "skills/app_builder/templates/global-compose/.env.example")"
+  global_compose_env="$(openclaw_render_global_compose_env)"
 
   openclaw_write_content_if_changed "${OPENCLAW_CONFIG_FILE}" "0600" "${config_json}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_changed "$(openclaw_env_file_path)" "0640" "${env_file}" "root:${RUNTIME_USER}" || true
@@ -531,7 +539,7 @@ openclaw_write_runtime_files() {
   openclaw_write_content_if_changed "$(openclaw_workspace_skill_app_builder_path)" "0644" "${app_builder_skill}" "${RUNTIME_USER}:${RUNTIME_USER}" || true
   openclaw_write_content_if_missing "$(openclaw_host_definition_of_done_path)" "0644" "${definition_of_done}" "root:root" || true
   openclaw_write_content_if_missing "$(openclaw_host_global_compose_template_path)" "0644" "${global_compose_template}" "root:root" || true
-  openclaw_write_content_if_missing "$(openclaw_host_global_compose_env_template_path)" "0644" "${global_compose_env_template}" "root:root" || true
+  openclaw_write_content_if_missing "$(openclaw_host_global_compose_env_template_path)" "0644" "${global_compose_env}" "root:root" || true
 }
 
 openclaw_fix_runtime_permissions() {
