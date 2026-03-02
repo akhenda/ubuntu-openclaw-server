@@ -173,6 +173,7 @@ HUB_IMAGE="ghcr.io/gethomepage/homepage:latest"
 HUB_CONFIG_DIR="\${APPS_ROOT_DIR}/hub-config"
 
 mkdir -p "\${HUB_CONFIG_DIR}"
+if [[ ! -f "\${HUB_CONFIG_DIR}/settings.yaml" ]]; then
 cat > "\${HUB_CONFIG_DIR}/settings.yaml" <<SETTINGS
 title: OpenClaw Hub
 layout:
@@ -186,7 +187,9 @@ color: slate
 theme: dark
 headerStyle: boxedWidgets
 SETTINGS
+fi
 
+if [[ ! -f "\${HUB_CONFIG_DIR}/widgets.yaml" ]]; then
 cat > "\${HUB_CONFIG_DIR}/widgets.yaml" <<WIDGETS
 - resources:
     cpu: true
@@ -198,11 +201,14 @@ cat > "\${HUB_CONFIG_DIR}/widgets.yaml" <<WIDGETS
     longitude: 36.8172
     timezone: Africa/Nairobi
 WIDGETS
+fi
 
+if [[ ! -f "\${HUB_CONFIG_DIR}/docker.yaml" ]]; then
 cat > "\${HUB_CONFIG_DIR}/docker.yaml" <<DOCKER
 local:
   host: \${SOCKET_PROXY_ENDPOINT}
 DOCKER
+fi
 
 if [[ ! -f "\${APPS_COMPOSE_FILE}" ]]; then
   cat > "\${APPS_COMPOSE_FILE}" <<COMPOSE

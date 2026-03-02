@@ -460,13 +460,35 @@ APP_NAME="\${1:?app name required}"
 APP_PORT="\${2:?internal port required (e.g. 3000)}"
 
 WORKSPACE_ROOT="${runtime_home}/.openclaw/workspace"
-SRC_DIR="\${WORKSPACE_ROOT}/\${APP_NAME}"
+SANDBOX_WORKSPACE_ROOT="/home/node/.openclaw/workspace"
+LEGACY_WORKSPACE_ROOT="${OPENCLAW_ROOT_DIR}/workspace"
 DEST_ROOT="${APPS_ROOT_DIR}"
 DEST_DIR="\${DEST_ROOT}/\${APP_NAME}"
 DEPLOY_SCRIPT="${APPS_DEPLOY_SCRIPT}"
+SRC_DIR=""
+
+if [[ -n "\${APP_SOURCE_DIR:-}" ]]; then
+  if [[ ! -d "\${APP_SOURCE_DIR}" ]]; then
+    echo "APP_SOURCE_DIR is set but not found: \${APP_SOURCE_DIR}" >&2
+    exit 1
+  fi
+  SRC_DIR="\${APP_SOURCE_DIR}"
+else
+  for root in "\${WORKSPACE_ROOT}" "\${SANDBOX_WORKSPACE_ROOT}" "\${LEGACY_WORKSPACE_ROOT}"; do
+    candidate="\${root%/}/\${APP_NAME}"
+    if [[ -d "\${candidate}" ]]; then
+      SRC_DIR="\${candidate}"
+      break
+    fi
+  done
+fi
 
 if [[ ! -d "\${SRC_DIR}" ]]; then
-  echo "Source app directory not found: \${SRC_DIR}" >&2
+  echo "Source app directory not found for '\${APP_NAME}'." >&2
+  echo "Checked roots:" >&2
+  echo "  - \${WORKSPACE_ROOT}" >&2
+  echo "  - \${SANDBOX_WORKSPACE_ROOT}" >&2
+  echo "  - \${LEGACY_WORKSPACE_ROOT}" >&2
   exit 1
 fi
 
@@ -475,6 +497,7 @@ if [[ ! -x "\${DEPLOY_SCRIPT}" ]]; then
   exit 1
 fi
 
+echo "Using source app directory: \${SRC_DIR}"
 mkdir -p "\${DEST_DIR}"
 
 if command -v rsync >/dev/null 2>&1; then

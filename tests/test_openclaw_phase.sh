@@ -253,6 +253,20 @@ test_openclaw_renders_global_compose_env_with_real_values() {
   assert_text_contains "$rendered" 'BOT_NAME=mckay'
 }
 
+test_openclaw_publish_script_searches_multiple_workspace_roots() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/openclaw.sh'; \
+    OPENCLAW_RUNTIME_HOME=/home/openclaw; OPENCLAW_ROOT_DIR=/opt/openclaw/openclaw; \
+    APPS_ROOT_DIR=/opt/openclaw/apps; APPS_DEPLOY_SCRIPT=/opt/openclaw/bin/deploy_app.sh; \
+    openclaw_render_workspace_publish_script")"
+
+  assert_text_contains "$rendered" 'SANDBOX_WORKSPACE_ROOT="/home/node/.openclaw/workspace"'
+  assert_text_contains "$rendered" 'LEGACY_WORKSPACE_ROOT="/opt/openclaw/openclaw/workspace"'
+  assert_text_contains "$rendered" 'for root in "${WORKSPACE_ROOT}" "${SANDBOX_WORKSPACE_ROOT}" "${LEGACY_WORKSPACE_ROOT}"; do'
+  assert_text_contains "$rendered" 'echo "Checked roots:" >&2'
+  assert_text_contains "$rendered" 'echo "Using source app directory: ${SRC_DIR}"'
+}
+
 test_openclaw_merges_existing_config_without_dropping_state() {
   local tmp_dir
   tmp_dir="$(mktemp -d)"
@@ -293,6 +307,7 @@ main() {
   test_openclaw_wrapper_forwards_runtime_env
   test_openclaw_config_bootstraps_app_builder_policy
   test_openclaw_renders_global_compose_env_with_real_values
+  test_openclaw_publish_script_searches_multiple_workspace_roots
   test_openclaw_merges_existing_config_without_dropping_state
   echo "PASS: test_openclaw_phase.sh"
 }
