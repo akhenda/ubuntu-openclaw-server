@@ -131,6 +131,48 @@ openclaw_read_repo_template() {
   cat "${template_path}"
 }
 
+openclaw_merge_config_json_with_existing() {
+  local desired_json="$1"
+
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    printf '%s' "${desired_json}"
+    return 0
+  fi
+
+  if [[ ! -f "${OPENCLAW_CONFIG_FILE}" ]]; then
+    printf '%s' "${desired_json}"
+    return 0
+  fi
+
+  local existing_json
+  if ! existing_json="$(cat "${OPENCLAW_CONFIG_FILE}" 2>/dev/null)"; then
+    printf '%s' "${desired_json}"
+    return 0
+  fi
+
+  local merged_json
+  if ! merged_json="$(jq -n \
+    --argjson existing "${existing_json}" \
+    --argjson desired "${desired_json}" '
+      def merge(a; b):
+        if (a | type) == "object" and (b | type) == "object" then
+          reduce (((a | keys_unsorted) + (b | keys_unsorted) | unique)[]) as $k
+            ({};
+              .[$k] = merge(a[$k]; b[$k])
+            )
+        elif b == null then a
+        else b
+        end;
+      merge($existing; $desired)
+    ' 2>/dev/null)"; then
+    log_warn "[openclaw] existing config merge failed; using desired baseline"
+    printf '%s' "${desired_json}"
+    return 0
+  fi
+
+  printf '%s' "${merged_json}"
+}
+
 openclaw_env_file_path() {
   printf '%s/.env' "${OPENCLAW_ROOT_DIR}"
 }
@@ -522,6 +564,7 @@ openclaw_write_runtime_files() {
   local global_compose_env
 
   config_json="$(openclaw_render_config_json)"
+  config_json="$(openclaw_merge_config_json_with_existing "${config_json}")"
   env_file="$(openclaw_render_env_file)"
   policy_file="$(openclaw_render_policy_agents_md)"
   app_builder_policy_file="$(openclaw_render_app_builder_policy_md)"

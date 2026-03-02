@@ -252,6 +252,38 @@ test_openclaw_renders_global_compose_env_with_real_values() {
   assert_text_contains "$rendered" 'BOT_NAME=mckay'
 }
 
+test_openclaw_merges_existing_config_without_dropping_state() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' RETURN
+
+  local cfg_file="$tmp_dir/openclaw.json"
+  cat > "$cfg_file" <<'JSON'
+{
+  "wizard": { "completed": true },
+  "hooks": {
+    "internal": {
+      "entries": {
+        "bootstrap-extra-files": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}
+JSON
+
+  local merged
+  merged="$(bash -lc "source '$ROOT_DIR/scripts/lib/common.sh'; source '$ROOT_DIR/scripts/lib/openclaw.sh'; \
+    OPENCLAW_CONFIG_FILE='$cfg_file'; DRY_RUN=false; \
+    desired='{\"hooks\":{\"internal\":{\"entries\":{\"bootstrap-extra-files\":{\"enabled\":true,\"paths\":[\"policies/deploy/AGENTS.md\",\"policies/deploy/APP_BUILDER.md\"]}}}}}'; \
+    openclaw_merge_config_json_with_existing \"\$desired\"")"
+
+  assert_text_contains "$merged" '"completed": true'
+  assert_text_contains "$merged" '"policies/deploy/AGENTS.md"'
+  assert_text_contains "$merged" '"policies/deploy/APP_BUILDER.md"'
+}
+
 main() {
   test_openclaw_phase_dry_run_applies_runtime
   test_openclaw_phase_can_be_disabled
@@ -259,6 +291,7 @@ main() {
   test_openclaw_wrapper_forwards_runtime_env
   test_openclaw_config_bootstraps_app_builder_policy
   test_openclaw_renders_global_compose_env_with_real_values
+  test_openclaw_merges_existing_config_without_dropping_state
   echo "PASS: test_openclaw_phase.sh"
 }
 

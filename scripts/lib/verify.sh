@@ -180,6 +180,8 @@ verify_openclaw_artifacts() {
   verify_require_file "$(openclaw_host_global_compose_env_template_path)" "OpenClaw global compose env template"
 
   verify_require_contains "${OPENCLAW_CONFIG_FILE}" '"bootstrap-extra-files"' "OpenClaw config"
+  verify_require_contains "${OPENCLAW_CONFIG_FILE}" 'policies/deploy/AGENTS.md' "OpenClaw config bootstrap paths"
+  verify_require_contains "${OPENCLAW_CONFIG_FILE}" 'policies/deploy/APP_BUILDER.md' "OpenClaw config bootstrap paths"
   verify_require_contains "${OPENCLAW_POLICY_FILE}" 'Never publish ports' "OpenClaw deploy policy file"
   verify_require_contains "${OPENCLAW_POLICY_FILE}" 'publish_workspace_app.sh' "OpenClaw deploy policy file"
   verify_require_contains "$(openclaw_workspace_app_builder_policy_path)" 'Runtime boundary rule' "OpenClaw app builder policy file"
