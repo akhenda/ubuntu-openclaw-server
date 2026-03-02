@@ -183,9 +183,22 @@ test_systemd_phase_respects_disable_flags() {
   assert_not_contains "$output_file" "openclaw-apps.service"
 }
 
+test_openclaw_unit_uses_configured_gateway_bind() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/systemd.sh'; \
+    RUNTIME_USER=openclaw; OPENCLAW_ROOT_DIR=/opt/openclaw/openclaw; \
+    OPENCLAW_RUNTIME_HOME=/home/openclaw; OPENCLAW_NPM_PREFIX=/home/openclaw/.npm-global; \
+    OPENCLAW_BIN=/home/openclaw/.npm-global/bin/openclaw; OPENCLAW_GATEWAY_PORT=18789; \
+    OPENCLAW_GATEWAY_BIND=loopback; EDGE_SYSTEMD_UNIT=/tmp/edge.service; \
+    systemd_render_openclaw_unit")"
+
+  assert_contains <(printf '%s' "$rendered") 'ExecStart=/home/openclaw/.npm-global/bin/openclaw gateway --bind loopback --port 18789'
+}
+
 main() {
   test_systemd_phase_dry_run_manages_units
   test_systemd_phase_respects_disable_flags
+  test_openclaw_unit_uses_configured_gateway_bind
   echo "PASS: test_systemd_phase.sh"
 }
 

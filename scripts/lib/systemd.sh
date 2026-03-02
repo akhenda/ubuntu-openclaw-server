@@ -80,7 +80,7 @@ EnvironmentFile=-${OPENCLAW_ROOT_DIR}/.env
 Environment=HOME=${OPENCLAW_RUNTIME_HOME}
 Environment=PATH=${OPENCLAW_NPM_PREFIX}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WorkingDirectory=${OPENCLAW_ROOT_DIR}
-ExecStart=${OPENCLAW_BIN} gateway --bind lan --port ${OPENCLAW_GATEWAY_PORT}
+ExecStart=${OPENCLAW_BIN} gateway --bind ${OPENCLAW_GATEWAY_BIND} --port ${OPENCLAW_GATEWAY_PORT}
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
