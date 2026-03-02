@@ -171,10 +171,15 @@ SOCKET_PROXY_ENDPOINT="\${SOCKET_PROXY_ENDPOINT:-${SOCKET_PROXY_ENDPOINT}}"
 HUB_SERVICE_NAME="hub"
 HUB_IMAGE="ghcr.io/gethomepage/homepage:latest"
 HUB_CONFIG_DIR="\${APPS_ROOT_DIR}/hub-config"
+SETTINGS_MARKER="# managed-by-openclaw-hub-style"
 
 mkdir -p "\${HUB_CONFIG_DIR}"
-if [[ ! -f "\${HUB_CONFIG_DIR}/settings.yaml" ]]; then
-cat > "\${HUB_CONFIG_DIR}/settings.yaml" <<SETTINGS
+
+write_settings_profile() {
+  case "\${HUB_STYLE_PROFILE}" in
+    modern-minimal)
+      cat > "\${HUB_CONFIG_DIR}/settings.yaml" <<SETTINGS
+\${SETTINGS_MARKER}
 title: OpenClaw Hub
 layout:
   Apps:
@@ -187,6 +192,47 @@ color: slate
 theme: dark
 headerStyle: boxedWidgets
 SETTINGS
+      ;;
+    minimal)
+      cat > "\${HUB_CONFIG_DIR}/settings.yaml" <<SETTINGS
+\${SETTINGS_MARKER}
+title: OpenClaw Hub
+layout:
+  Apps:
+    style: row
+    columns: 4
+color: zinc
+theme: dark
+headerStyle: clean
+SETTINGS
+      ;;
+    creative-minimal)
+      cat > "\${HUB_CONFIG_DIR}/settings.yaml" <<SETTINGS
+\${SETTINGS_MARKER}
+title: OpenClaw Hub
+layout:
+  Apps:
+    style: row
+    columns: 3
+background:
+  image: https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1600&q=80
+  blur: md
+color: cyan
+theme: dark
+headerStyle: boxed
+SETTINGS
+      ;;
+    *)
+      echo "Unsupported HUB_STYLE_PROFILE: \${HUB_STYLE_PROFILE}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+if [[ ! -f "\${HUB_CONFIG_DIR}/settings.yaml" ]]; then
+  write_settings_profile
+elif grep -Fq "\${SETTINGS_MARKER}" "\${HUB_CONFIG_DIR}/settings.yaml"; then
+  write_settings_profile
 fi
 
 if [[ ! -f "\${HUB_CONFIG_DIR}/widgets.yaml" ]]; then
