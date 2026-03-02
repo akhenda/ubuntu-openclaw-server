@@ -89,6 +89,7 @@ set_default_config() {
   : "${OPENCLAW_START_STACK:=true}"
   : "${OPENCLAW_MANAGE_SYSTEMD:=true}"
   : "${OPENCLAW_GATEWAY_PORT:=18789}"
+  : "${OPENCLAW_EDGE_UPSTREAM_HOST:=172.30.0.1}"
   : "${OPENCLAW_CONFIG_FILE:=${OPENCLAW_RUNTIME_HOME}/.openclaw/openclaw.json}"
   : "${OPENCLAW_POLICY_FILE:=${OPENCLAW_RUNTIME_HOME}/.openclaw/workspace/policies/deploy/AGENTS.md}"
   : "${OPENCLAW_POLICY_INJECTION:=true}"
@@ -152,6 +153,7 @@ set_default_config() {
   export OPENCLAW_ENABLE OPENCLAW_ROOT_DIR OPENCLAW_SOURCE_DIR OPENCLAW_SOURCE_REPO OPENCLAW_SOURCE_REF OPENCLAW_RUNTIME_HOME
   export OPENCLAW_NPM_PREFIX OPENCLAW_NPM_PACKAGE OPENCLAW_NPM_VERSION OPENCLAW_BIN OPENCLAW_IMAGE
   export OPENCLAW_BUILD_IMAGE OPENCLAW_START_STACK OPENCLAW_MANAGE_SYSTEMD OPENCLAW_GATEWAY_PORT
+  export OPENCLAW_EDGE_UPSTREAM_HOST
   export OPENCLAW_CONFIG_FILE OPENCLAW_POLICY_FILE OPENCLAW_POLICY_INJECTION OPENCLAW_SYSTEMD_UNIT
   export EDGE_MANAGE_SYSTEMD APPS_MANAGE_SYSTEMD APPS_START_STACK EDGE_SYSTEMD_UNIT APPS_SYSTEMD_UNIT
   export TAILSCALE_ENABLE TAILSCALE_AUTHKEY TAILSCALE_SSH TAILSCALE_HOSTNAME
@@ -295,6 +297,15 @@ validate_config() {
   validate_boolean_var FIREWALL_ALLOW_HTTP
   validate_boolean_var FIREWALL_ALLOW_HTTPS
   validate_tcp_port_list_var FIREWALL_EXTRA_TCP_PORTS
+  if [[ "${OPENCLAW_ENABLE}" == "true" && -n "${FIREWALL_EXTRA_TCP_PORTS:-}" ]]; then
+    local normalized_firewall_ports="${FIREWALL_EXTRA_TCP_PORTS//,/ }"
+    local firewall_port=""
+    for firewall_port in ${normalized_firewall_ports}; do
+      if [[ "${firewall_port}" == "${OPENCLAW_GATEWAY_PORT}" ]]; then
+        die "FIREWALL_EXTRA_TCP_PORTS must not include OPENCLAW_GATEWAY_PORT (${OPENCLAW_GATEWAY_PORT}); this port must remain private to the edge subnet."
+      fi
+    done
+  fi
   validate_boolean_var EDGE_ENABLE
   validate_boolean_var EDGE_START_STACK
   validate_boolean_var EDGE_REQUIRE_TUNNEL_CREDENTIALS
@@ -310,6 +321,8 @@ validate_config() {
   validate_boolean_var OPENCLAW_MANAGE_SYSTEMD
   validate_boolean_var OPENCLAW_POLICY_INJECTION
   validate_tcp_port "${OPENCLAW_GATEWAY_PORT}" || die "OPENCLAW_GATEWAY_PORT must be a valid TCP port number"
+  [[ "${OPENCLAW_EDGE_UPSTREAM_HOST}" =~ ^[a-zA-Z0-9._:-]+$ ]] || \
+    die "OPENCLAW_EDGE_UPSTREAM_HOST must be a hostname or IPv4/IPv6-literal-safe token"
   validate_path_is_absolute OPENCLAW_ROOT_DIR
   validate_path_is_absolute OPENCLAW_SOURCE_DIR
   validate_path_is_absolute OPENCLAW_RUNTIME_HOME
@@ -483,6 +496,7 @@ Configuration summary:
   OPENCLAW_START_STACK=${OPENCLAW_START_STACK}
   OPENCLAW_MANAGE_SYSTEMD=${OPENCLAW_MANAGE_SYSTEMD}
   OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT}
+  OPENCLAW_EDGE_UPSTREAM_HOST=${OPENCLAW_EDGE_UPSTREAM_HOST}
   OPENCLAW_CONFIG_FILE=${OPENCLAW_CONFIG_FILE}
   OPENCLAW_POLICY_FILE=${OPENCLAW_POLICY_FILE}
   OPENCLAW_POLICY_INJECTION=${OPENCLAW_POLICY_INJECTION}

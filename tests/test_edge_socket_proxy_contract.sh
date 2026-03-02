@@ -28,6 +28,7 @@ assert_not_contains_text() {
 test_edge_socket_proxy_enabled_contract() {
   local traefik_cfg
   local compose_cfg
+  local dynamic_cfg
 
   SOCKET_PROXY_ENABLE="true"
   SOCKET_PROXY_ENDPOINT="http://docker-socket-proxy:2375"
@@ -40,16 +41,21 @@ test_edge_socket_proxy_enabled_contract() {
   TRAEFIK_DASHBOARD_HOST="traefik.example.com"
   TUNNEL_UUID="123e4567-e89b-12d3-a456-426614174000"
   APPS_DOMAIN="example.com"
+  BOT_NAME="mckay"
+  OPENCLAW_GATEWAY_PORT="18789"
+  OPENCLAW_EDGE_UPSTREAM_HOST="172.30.0.1"
   TRAEFIK_IP="172.30.0.2"
   CLOUDFLARED_IP="172.30.0.3"
 
   traefik_cfg="$(edge_render_traefik_config)"
   compose_cfg="$(edge_render_compose)"
+  dynamic_cfg="$(edge_render_openclaw_dynamic_config)"
 
   assert_contains_text "$traefik_cfg" 'endpoint: "tcp://docker-socket-proxy:2375"'
   assert_contains_text "$compose_cfg" "docker-socket-proxy:"
   assert_contains_text "$compose_cfg" "depends_on:"
   assert_contains_text "$compose_cfg" "docker-socket-proxy"
+  assert_contains_text "$dynamic_cfg" 'url: http://172.30.0.1:18789'
 
   local sock_mount_count
   sock_mount_count="$(grep -Fc '/var/run/docker.sock:/var/run/docker.sock:ro' <<< "$compose_cfg")"
@@ -71,6 +77,9 @@ test_edge_socket_proxy_disabled_contract() {
   TRAEFIK_DASHBOARD_HOST="traefik.example.com"
   TUNNEL_UUID="123e4567-e89b-12d3-a456-426614174000"
   APPS_DOMAIN="example.com"
+  BOT_NAME="mckay"
+  OPENCLAW_GATEWAY_PORT="18789"
+  OPENCLAW_EDGE_UPSTREAM_HOST="172.30.0.1"
   TRAEFIK_IP="172.30.0.2"
   CLOUDFLARED_IP="172.30.0.3"
 

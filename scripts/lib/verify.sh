@@ -126,6 +126,10 @@ verify_edge_artifacts() {
   verify_require_file "${EDGE_ROOT_DIR}/edge/traefik/traefik.yml" "Traefik config"
   verify_require_file "${EDGE_ROOT_DIR}/edge/traefik/dynamic/openclaw.yml" "Traefik OpenClaw dynamic config"
   verify_require_file "${EDGE_ROOT_DIR}/edge/cloudflared/config.yml" "Cloudflared config"
+  verify_require_contains \
+    "${EDGE_ROOT_DIR}/edge/traefik/dynamic/openclaw.yml" \
+    "url: http://${OPENCLAW_EDGE_UPSTREAM_HOST}:${OPENCLAW_GATEWAY_PORT}" \
+    "Traefik OpenClaw dynamic config"
 
   if [[ "${SOCKET_PROXY_ENABLE}" == "true" ]]; then
     local edge_compose="${EDGE_ROOT_DIR}/edge/docker-compose.yml"

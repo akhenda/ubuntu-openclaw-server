@@ -112,6 +112,11 @@ phase_firewall() {
     firewall_allow_port_tcp "${ufw_cmd}" "443"
   fi
 
+  if [[ "${EDGE_ENABLE}" == "true" && "${OPENCLAW_ENABLE}" == "true" ]]; then
+    log_info "[firewall] allowing edge subnet ${EDGE_SUBNET} to OpenClaw gateway port ${OPENCLAW_GATEWAY_PORT}"
+    firewall_run_root "${ufw_cmd}" allow from "${EDGE_SUBNET}" to any port "${OPENCLAW_GATEWAY_PORT}" proto tcp
+  fi
+
   firewall_apply_extra_ports "${ufw_cmd}"
 
   firewall_run_root "${ufw_cmd}" --force enable

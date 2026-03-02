@@ -50,6 +50,8 @@ FIREWALL_ENABLE=true
 FIREWALL_ALLOW_HTTP=true
 FIREWALL_ALLOW_HTTPS=true
 FIREWALL_EXTRA_TCP_PORTS=3000,8080,1773,22
+OPENCLAW_ENABLE=true
+OPENCLAW_GATEWAY_PORT=18789
 EDGE_NETWORK_NAME=openclaw-edge
 EDGE_SUBNET=172.30.0.0/24
 TRAEFIK_IP=172.30.0.2
@@ -124,6 +126,8 @@ test_firewall_phase_dry_run_applies_baseline() {
   assert_contains "$output_file" "ufw deny 22/tcp"
   assert_contains "$output_file" "ufw allow 80/tcp"
   assert_contains "$output_file" "ufw allow 443/tcp"
+  assert_contains "$output_file" "allowing edge subnet 172.30.0.0/24 to OpenClaw gateway port 18789"
+  assert_contains "$output_file" "ufw allow from 172.30.0.0/24 to any port 18789 proto tcp"
   assert_contains "$output_file" "allowing extra TCP port 3000"
   assert_contains "$output_file" "allowing extra TCP port 8080"
   assert_contains "$output_file" "skipping duplicate/implicit port 1773"
@@ -160,9 +164,47 @@ test_firewall_phase_can_be_disabled() {
   assert_not_contains "$output_file" "ufw default deny incoming"
 }
 
+test_firewall_phase_blocks_public_openclaw_port_rule() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' RETURN
+
+  local env_file="$tmp_dir/.env"
+  local output_file="$tmp_dir/output.log"
+
+  make_valid_env "$env_file"
+  make_common_state "$tmp_dir"
+  printf '\nFIREWALL_EXTRA_TCP_PORTS=3000,18789\n' >> "$env_file"
+
+  set +e
+  OS_RELEASE_FILE="$tmp_dir/os-release" \
+  USER_PASSWD_FILE="$tmp_dir/passwd" \
+  USER_GROUP_FILE="$tmp_dir/group" \
+  SUDOERS_FILE="$tmp_dir/sudoers" \
+  SSHD_MAIN_CONFIG="$tmp_dir/sshd_config" \
+  SSHD_CONFIG_DIR="$tmp_dir/sshd_config.d" \
+  SSHD_HARDENING_FILE="$tmp_dir/sshd_config.d/99-openclaw-hardening.conf" \
+  CURRENT_LOGIN_USER="hendaz" \
+  DOCKER_ARCH=amd64 \
+  UFW_BIN=ufw \
+  bash "$ROOT_DIR/scripts/install.sh" --config "$env_file" --check-config >"$output_file" 2>&1
+  local rc=$?
+  set -e
+
+  if [[ $rc -eq 0 ]]; then
+    echo "Assertion failed: expected config validation to fail when FIREWALL_EXTRA_TCP_PORTS includes OPENCLAW_GATEWAY_PORT" >&2
+    echo "--- output ---" >&2
+    cat "$output_file" >&2
+    exit 1
+  fi
+
+  assert_contains "$output_file" "must not include OPENCLAW_GATEWAY_PORT"
+}
+
 main() {
   test_firewall_phase_dry_run_applies_baseline
   test_firewall_phase_can_be_disabled
+  test_firewall_phase_blocks_public_openclaw_port_rule
   echo "PASS: test_firewall_phase.sh"
 }
 

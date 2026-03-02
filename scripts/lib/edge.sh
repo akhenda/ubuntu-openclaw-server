@@ -173,7 +173,7 @@ http:
     openclaw:
       loadBalancer:
         servers:
-          - url: http://host.docker.internal:${OPENCLAW_GATEWAY_PORT}
+          - url: http://${OPENCLAW_EDGE_UPSTREAM_HOST}:${OPENCLAW_GATEWAY_PORT}
 EOF
 }
 
