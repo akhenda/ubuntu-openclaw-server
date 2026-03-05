@@ -10,6 +10,16 @@ apps_run_root() {
   run_cmd sudo "$@"
 }
 
+apps_run_runtime() {
+  if [[ "${USER:-}" == "${RUNTIME_USER}" ]]; then
+    run_cmd "$@"
+    return $?
+  fi
+
+  command_exists sudo || die "[apps] sudo is required to run commands as ${RUNTIME_USER}"
+  run_cmd sudo -u "${RUNTIME_USER}" -H "$@"
+}
+
 apps_write_content_if_changed() {
   local target="$1"
   local mode="$2"
@@ -71,6 +81,7 @@ APPS_ROOT = "${APPS_ROOT_DIR}"
 EDGE_NETWORK_NAME = "${EDGE_NETWORK_NAME}"
 RESERVED_BOT_NAME = os.environ.get("BOT_NAME", "${BOT_NAME}")
 HUB_SERVICE_NAME = "hub"
+MISSION_CONTROL_SERVICE_NAME = os.environ.get("MISSION_CONTROL_SERVICE_NAME", "${MISSION_CONTROL_SERVICE_NAME}")
 
 def die(msg: str) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
@@ -105,7 +116,11 @@ def main() -> None:
     if not apps_domain:
         die("APPS_DOMAIN env var required")
 
-    if app_name in {"traefik", RESERVED_BOT_NAME, HUB_SERVICE_NAME}:
+    reserved_names = {"traefik", RESERVED_BOT_NAME, HUB_SERVICE_NAME}
+    if MISSION_CONTROL_SERVICE_NAME:
+        reserved_names.add(MISSION_CONTROL_SERVICE_NAME)
+
+    if app_name in reserved_names:
         die(f"Reserved app name: {app_name}")
 
     if not (1 <= int(app_port) <= 65535):
@@ -167,6 +182,21 @@ EDGE_NETWORK_NAME="\${EDGE_NETWORK_NAME:-${EDGE_NETWORK_NAME}}"
 HUB_PRIMARY_HOST="\${HUB_PRIMARY_HOST:-${HUB_PRIMARY_HOST}}"
 HUB_ALIAS_HOST="\${HUB_ALIAS_HOST:-${HUB_ALIAS_HOST}}"
 HUB_STYLE_PROFILE="\${HUB_STYLE_PROFILE:-${HUB_STYLE_PROFILE}}"
+MISSION_CONTROL_ENABLE="\${MISSION_CONTROL_ENABLE:-${MISSION_CONTROL_ENABLE}}"
+MISSION_CONTROL_SERVICE_NAME="\${MISSION_CONTROL_SERVICE_NAME:-${MISSION_CONTROL_SERVICE_NAME}}"
+MISSION_CONTROL_HOST="\${MISSION_CONTROL_HOST:-${MISSION_CONTROL_HOST}}"
+MISSION_CONTROL_API_HOST="\${MISSION_CONTROL_API_HOST:-${MISSION_CONTROL_API_HOST}}"
+MISSION_CONTROL_FRONTEND_DIR="\${MISSION_CONTROL_FRONTEND_DIR:-${MISSION_CONTROL_FRONTEND_DIR}}"
+MISSION_CONTROL_SOURCE_DIR="\${MISSION_CONTROL_SOURCE_DIR:-${MISSION_CONTROL_SOURCE_DIR}}"
+MISSION_CONTROL_AUTH_MODE="\${MISSION_CONTROL_AUTH_MODE:-${MISSION_CONTROL_AUTH_MODE}}"
+MISSION_CONTROL_LOCAL_AUTH_TOKEN="\${MISSION_CONTROL_LOCAL_AUTH_TOKEN:-${MISSION_CONTROL_LOCAL_AUTH_TOKEN}}"
+MISSION_CONTROL_DB_AUTO_MIGRATE="\${MISSION_CONTROL_DB_AUTO_MIGRATE:-${MISSION_CONTROL_DB_AUTO_MIGRATE}}"
+MISSION_CONTROL_POSTGRES_DB="\${MISSION_CONTROL_POSTGRES_DB:-${MISSION_CONTROL_POSTGRES_DB}}"
+MISSION_CONTROL_POSTGRES_USER="\${MISSION_CONTROL_POSTGRES_USER:-${MISSION_CONTROL_POSTGRES_USER}}"
+MISSION_CONTROL_POSTGRES_PASSWORD="\${MISSION_CONTROL_POSTGRES_PASSWORD:-${MISSION_CONTROL_POSTGRES_PASSWORD}}"
+MISSION_CONTROL_RQ_QUEUE_NAME="\${MISSION_CONTROL_RQ_QUEUE_NAME:-${MISSION_CONTROL_RQ_QUEUE_NAME}}"
+MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS="\${MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS:-${MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS}}"
+MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES="\${MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES:-${MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES}}"
 SOCKET_PROXY_ENDPOINT="\${SOCKET_PROXY_ENDPOINT:-${SOCKET_PROXY_ENDPOINT}}"
 HUB_SERVICE_NAME="hub"
 HUB_IMAGE="ghcr.io/gethomepage/homepage:latest"
@@ -286,6 +316,11 @@ if [[ -x "\${APPS_VENV_DIR}/bin/python" ]]; then
 fi
 
 export APPS_COMPOSE_FILE EDGE_NETWORK_NAME HUB_PRIMARY_HOST HUB_ALIAS_HOST HUB_SERVICE_NAME HUB_IMAGE HUB_CONFIG_DIR
+export MISSION_CONTROL_ENABLE MISSION_CONTROL_SERVICE_NAME MISSION_CONTROL_HOST MISSION_CONTROL_API_HOST
+export MISSION_CONTROL_FRONTEND_DIR MISSION_CONTROL_SOURCE_DIR MISSION_CONTROL_AUTH_MODE
+export MISSION_CONTROL_LOCAL_AUTH_TOKEN MISSION_CONTROL_DB_AUTO_MIGRATE
+export MISSION_CONTROL_POSTGRES_DB MISSION_CONTROL_POSTGRES_USER MISSION_CONTROL_POSTGRES_PASSWORD
+export MISSION_CONTROL_RQ_QUEUE_NAME MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES
 "\${PYTHON_BIN}" - <<'PY'
 import os
 from ruamel.yaml import YAML
@@ -297,6 +332,21 @@ hub_alias_host = os.environ.get("HUB_ALIAS_HOST", "").strip()
 hub_service_name = os.environ["HUB_SERVICE_NAME"]
 hub_image = os.environ["HUB_IMAGE"]
 hub_config_dir = os.environ["HUB_CONFIG_DIR"]
+mission_control_enabled = os.environ.get("MISSION_CONTROL_ENABLE", "false").strip().lower() == "true"
+mission_control_service_name = os.environ.get("MISSION_CONTROL_SERVICE_NAME", "mission-control").strip() or "mission-control"
+mission_control_host = os.environ.get("MISSION_CONTROL_HOST", "").strip()
+mission_control_api_host = os.environ.get("MISSION_CONTROL_API_HOST", "").strip()
+mission_control_frontend_dir = os.environ.get("MISSION_CONTROL_FRONTEND_DIR", "").strip()
+mission_control_source_dir = os.environ.get("MISSION_CONTROL_SOURCE_DIR", "").strip()
+mission_control_auth_mode = os.environ.get("MISSION_CONTROL_AUTH_MODE", "local").strip() or "local"
+mission_control_local_auth_token = os.environ.get("MISSION_CONTROL_LOCAL_AUTH_TOKEN", "").strip()
+mission_control_db_auto_migrate = os.environ.get("MISSION_CONTROL_DB_AUTO_MIGRATE", "true").strip().lower()
+mission_control_postgres_db = os.environ.get("MISSION_CONTROL_POSTGRES_DB", "mission_control").strip() or "mission_control"
+mission_control_postgres_user = os.environ.get("MISSION_CONTROL_POSTGRES_USER", "postgres").strip() or "postgres"
+mission_control_postgres_password = os.environ.get("MISSION_CONTROL_POSTGRES_PASSWORD", "postgres").strip() or "postgres"
+mission_control_rq_queue_name = os.environ.get("MISSION_CONTROL_RQ_QUEUE_NAME", "default").strip() or "default"
+mission_control_rq_dispatch_throttle_seconds = os.environ.get("MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS", "2.0").strip() or "2.0"
+mission_control_rq_dispatch_max_retries = os.environ.get("MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES", "3").strip() or "3"
 services_config_path = os.path.join(hub_config_dir, "services.yaml")
 
 yaml = YAML()
@@ -337,6 +387,171 @@ def extract_host_from_rule(rule):
     if quote_marker in rule:
         return rule.split(quote_marker, 1)[1].split('"', 1)[0]
     return ""
+
+if mission_control_enabled:
+    if not mission_control_host:
+        raise SystemExit("MISSION_CONTROL_HOST must be set when MISSION_CONTROL_ENABLE=true")
+    if not mission_control_api_host:
+        raise SystemExit("MISSION_CONTROL_API_HOST must be set when MISSION_CONTROL_ENABLE=true")
+    if not mission_control_frontend_dir:
+        raise SystemExit("MISSION_CONTROL_FRONTEND_DIR must be set when MISSION_CONTROL_ENABLE=true")
+    if not mission_control_source_dir:
+        raise SystemExit("MISSION_CONTROL_SOURCE_DIR must be set when MISSION_CONTROL_ENABLE=true")
+    if mission_control_auth_mode == "local" and len(mission_control_local_auth_token) < 50:
+        raise SystemExit("MISSION_CONTROL_LOCAL_AUTH_TOKEN must be at least 50 chars when MISSION_CONTROL_AUTH_MODE=local")
+
+    mission_control_internal_network = f"{mission_control_service_name}-internal"
+    mission_control_db_service_name = f"{mission_control_service_name}-db"
+    mission_control_redis_service_name = f"{mission_control_service_name}-redis"
+    mission_control_backend_service_name = f"{mission_control_service_name}-backend"
+    mission_control_worker_service_name = f"{mission_control_service_name}-webhook-worker"
+    mission_control_volume_name = f"{mission_control_service_name}-postgres-data"
+    mission_control_database_url = (
+        f"postgresql+psycopg://{mission_control_postgres_user}:{mission_control_postgres_password}"
+        f"@{mission_control_db_service_name}:5432/{mission_control_postgres_db}"
+    )
+    mission_control_redis_url = f"redis://{mission_control_redis_service_name}:6379/0"
+    mission_control_api_base_url = f"https://{mission_control_api_host}"
+
+    networks[mission_control_internal_network] = {}
+    volumes = doc.setdefault("volumes", {})
+    volumes.setdefault(mission_control_volume_name, {})
+
+    mission_control_labels = [
+        "traefik.enable=true",
+        f"traefik.docker.network={edge_network_name}",
+        f'traefik.http.routers.{mission_control_service_name}.rule=Host("{mission_control_host}")',
+        f"traefik.http.routers.{mission_control_service_name}.entrypoints=web",
+        f"traefik.http.services.{mission_control_service_name}.loadbalancer.server.port=3000",
+        "homepage.group=Apps",
+        "homepage.name=Mission Control",
+        "homepage.icon=mdi-radar",
+        f"homepage.href=https://{mission_control_host}",
+        "homepage.description=Mission Control dashboard",
+    ]
+
+    mission_control_backend_labels = [
+        "traefik.enable=true",
+        f"traefik.docker.network={edge_network_name}",
+        f'traefik.http.routers.{mission_control_backend_service_name}.rule=Host("{mission_control_api_host}")',
+        f"traefik.http.routers.{mission_control_backend_service_name}.entrypoints=web",
+        f"traefik.http.services.{mission_control_backend_service_name}.loadbalancer.server.port=8000",
+    ]
+
+    services[mission_control_db_service_name] = {
+        "image": "postgres:16-alpine",
+        "restart": "unless-stopped",
+        "environment": {
+            "POSTGRES_DB": mission_control_postgres_db,
+            "POSTGRES_USER": mission_control_postgres_user,
+            "POSTGRES_PASSWORD": mission_control_postgres_password,
+        },
+        "volumes": [f"{mission_control_volume_name}:/var/lib/postgresql/data"],
+        "healthcheck": {
+            "test": [
+                "CMD-SHELL",
+                f"pg_isready -U {mission_control_postgres_user} -d {mission_control_postgres_db}",
+            ],
+            "interval": "10s",
+            "timeout": "5s",
+            "retries": 5,
+        },
+        "networks": [mission_control_internal_network],
+    }
+
+    services[mission_control_redis_service_name] = {
+        "image": "redis:7-alpine",
+        "restart": "unless-stopped",
+        "healthcheck": {
+            "test": ["CMD", "redis-cli", "ping"],
+            "interval": "10s",
+            "timeout": "3s",
+            "retries": 5,
+        },
+        "networks": [mission_control_internal_network],
+    }
+
+    services[mission_control_backend_service_name] = {
+        "build": {
+            "context": mission_control_source_dir,
+            "dockerfile": "backend/Dockerfile",
+        },
+        "restart": "unless-stopped",
+        "environment": {
+            "DATABASE_URL": mission_control_database_url,
+            "DB_AUTO_MIGRATE": mission_control_db_auto_migrate,
+            "CORS_ORIGINS": f"https://{mission_control_host}",
+            "AUTH_MODE": mission_control_auth_mode,
+            "LOCAL_AUTH_TOKEN": mission_control_local_auth_token,
+            "BASE_URL": mission_control_api_base_url,
+            "RQ_REDIS_URL": mission_control_redis_url,
+            "RQ_QUEUE_NAME": mission_control_rq_queue_name,
+            "RQ_DISPATCH_THROTTLE_SECONDS": mission_control_rq_dispatch_throttle_seconds,
+            "RQ_DISPATCH_MAX_RETRIES": mission_control_rq_dispatch_max_retries,
+        },
+        "depends_on": {
+            mission_control_db_service_name: {"condition": "service_healthy"},
+            mission_control_redis_service_name: {"condition": "service_healthy"},
+        },
+        "networks": [mission_control_internal_network, edge_network_name],
+        "labels": mission_control_backend_labels,
+    }
+
+    mission_control_service = {
+        "build": {
+            "context": mission_control_frontend_dir,
+        },
+        "restart": "unless-stopped",
+        "environment": {
+            "VITE_API_BASE_URL": mission_control_api_base_url,
+        },
+        "depends_on": {
+            mission_control_backend_service_name: {"condition": "service_started"},
+        },
+        "networks": [mission_control_internal_network, edge_network_name],
+        "labels": mission_control_labels,
+    }
+    services[mission_control_service_name] = mission_control_service
+    services[mission_control_worker_service_name] = {
+        "build": {
+            "context": mission_control_source_dir,
+            "dockerfile": "backend/Dockerfile",
+        },
+        "restart": "unless-stopped",
+        "command": ["python", "-m", "app.workers.webhook_worker"],
+        "environment": {
+            "DATABASE_URL": mission_control_database_url,
+            "DB_AUTO_MIGRATE": "false",
+            "CORS_ORIGINS": f"https://{mission_control_host}",
+            "AUTH_MODE": mission_control_auth_mode,
+            "LOCAL_AUTH_TOKEN": mission_control_local_auth_token,
+            "BASE_URL": mission_control_api_base_url,
+            "RQ_REDIS_URL": mission_control_redis_url,
+            "RQ_QUEUE_NAME": mission_control_rq_queue_name,
+            "RQ_DISPATCH_THROTTLE_SECONDS": mission_control_rq_dispatch_throttle_seconds,
+            "RQ_DISPATCH_MAX_RETRIES": mission_control_rq_dispatch_max_retries,
+        },
+        "depends_on": {
+            mission_control_db_service_name: {"condition": "service_healthy"},
+            mission_control_redis_service_name: {"condition": "service_healthy"},
+        },
+        "networks": [mission_control_internal_network],
+    }
+else:
+    mission_control_internal_network = f"{mission_control_service_name}-internal"
+    mission_control_db_service_name = f"{mission_control_service_name}-db"
+    mission_control_redis_service_name = f"{mission_control_service_name}-redis"
+    mission_control_backend_service_name = f"{mission_control_service_name}-backend"
+    mission_control_worker_service_name = f"{mission_control_service_name}-webhook-worker"
+    mission_control_volume_name = f"{mission_control_service_name}-postgres-data"
+    services.pop(mission_control_db_service_name, None)
+    services.pop(mission_control_redis_service_name, None)
+    services.pop(mission_control_backend_service_name, None)
+    services.pop(mission_control_service_name, None)
+    services.pop(mission_control_worker_service_name, None)
+    networks.pop(mission_control_internal_network, None)
+    if "volumes" in doc and isinstance(doc["volumes"], dict):
+        doc["volumes"].pop(mission_control_volume_name, None)
 
 grouped_services = {}
 for service_name, service_cfg in services.items():
@@ -425,12 +640,32 @@ with open(services_config_path, "w", encoding="utf-8") as f:
     yaml.dump(services_doc, f)
 
 print(f"OK: ensured hub service routes -> {', '.join(route_hosts)}")
+if mission_control_enabled:
+    print(f"OK: ensured mission control routes -> {mission_control_host}, {mission_control_api_host}")
 print(f"OK: wrote hub services catalog -> {services_config_path}")
 PY
 
 PROJECT_DIR="\$(dirname "\${APPS_COMPOSE_FILE}")"
 docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" up -d "\${HUB_SERVICE_NAME}"
 docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" ps "\${HUB_SERVICE_NAME}"
+if [[ "\${MISSION_CONTROL_ENABLE}" == "true" ]]; then
+  MISSION_CONTROL_DB_SERVICE_NAME="\${MISSION_CONTROL_SERVICE_NAME}-db"
+  MISSION_CONTROL_REDIS_SERVICE_NAME="\${MISSION_CONTROL_SERVICE_NAME}-redis"
+  MISSION_CONTROL_BACKEND_SERVICE_NAME="\${MISSION_CONTROL_SERVICE_NAME}-backend"
+  MISSION_CONTROL_WORKER_SERVICE_NAME="\${MISSION_CONTROL_SERVICE_NAME}-webhook-worker"
+  docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" up -d \
+    "\${MISSION_CONTROL_DB_SERVICE_NAME}" \
+    "\${MISSION_CONTROL_REDIS_SERVICE_NAME}" \
+    "\${MISSION_CONTROL_BACKEND_SERVICE_NAME}" \
+    "\${MISSION_CONTROL_SERVICE_NAME}" \
+    "\${MISSION_CONTROL_WORKER_SERVICE_NAME}"
+  docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" ps \
+    "\${MISSION_CONTROL_DB_SERVICE_NAME}" \
+    "\${MISSION_CONTROL_REDIS_SERVICE_NAME}" \
+    "\${MISSION_CONTROL_BACKEND_SERVICE_NAME}" \
+    "\${MISSION_CONTROL_SERVICE_NAME}" \
+    "\${MISSION_CONTROL_WORKER_SERVICE_NAME}"
+fi
 EOF
 }
 
@@ -488,6 +723,51 @@ EOF
 apps_ensure_layout() {
   apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${APPS_ROOT_DIR}"
   apps_run_root install -d -m 0755 "$(dirname "${APPS_REGISTER_SCRIPT}")"
+}
+
+apps_sync_mission_control_source_if_enabled() {
+  if [[ "${MISSION_CONTROL_ENABLE}" != "true" ]]; then
+    log_info "[apps] MISSION_CONTROL_ENABLE=false; skipping Mission Control source sync"
+    return 0
+  fi
+
+  log_info "[apps] ensuring Mission Control source at ${MISSION_CONTROL_SOURCE_DIR}"
+  apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "$(dirname "${MISSION_CONTROL_SOURCE_DIR}")"
+
+  local quoted_dir quoted_ref quoted_repo
+  printf -v quoted_dir '%q' "${MISSION_CONTROL_SOURCE_DIR}"
+  printf -v quoted_ref '%q' "${MISSION_CONTROL_SOURCE_REF}"
+  printf -v quoted_repo '%q' "${MISSION_CONTROL_SOURCE_REPO}"
+
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    if [[ -d "${MISSION_CONTROL_SOURCE_DIR}/.git" ]]; then
+      apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} fetch --all --tags"
+      apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} checkout ${quoted_ref}"
+      apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} pull --ff-only origin ${quoted_ref}"
+    else
+      apps_run_runtime /bin/bash -lc "git clone --branch ${quoted_ref} --depth 1 ${quoted_repo} ${quoted_dir}"
+    fi
+    return 0
+  fi
+
+  command_exists git || die "[apps] git is required for Mission Control source sync"
+
+  if [[ -d "${MISSION_CONTROL_SOURCE_DIR}" && ! -d "${MISSION_CONTROL_SOURCE_DIR}/.git" ]]; then
+    die "[apps] Mission Control source path exists but is not a git repository: ${MISSION_CONTROL_SOURCE_DIR}"
+  fi
+
+  if [[ -d "${MISSION_CONTROL_SOURCE_DIR}/.git" ]]; then
+    apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} fetch --all --tags"
+    apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} checkout ${quoted_ref}"
+    apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} pull --ff-only origin ${quoted_ref}"
+  else
+    apps_run_runtime /bin/bash -lc "git clone --branch ${quoted_ref} --depth 1 ${quoted_repo} ${quoted_dir}"
+  fi
+
+  [[ -f "${MISSION_CONTROL_FRONTEND_DIR}/package.json" ]] || \
+    die "[apps] Mission Control frontend package.json missing: ${MISSION_CONTROL_FRONTEND_DIR}/package.json"
+  [[ -f "${MISSION_CONTROL_SOURCE_DIR}/backend/Dockerfile" ]] || \
+    die "[apps] Mission Control backend Dockerfile missing: ${MISSION_CONTROL_SOURCE_DIR}/backend/Dockerfile"
 }
 
 apps_fix_runtime_permissions() {
@@ -563,6 +843,7 @@ phase_apps() {
   apps_ensure_layout
   apps_setup_venv_if_enabled
   apps_write_runtime_files
+  apps_sync_mission_control_source_if_enabled
   apps_fix_runtime_permissions
   apps_ensure_hub_during_install
   log_info "[apps] apps registry setup complete"

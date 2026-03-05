@@ -220,6 +220,13 @@ verify_apps_artifacts() {
     verify_require_contains "${APPS_REGISTER_SCRIPT}" "homepage.href=https://" "App register helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "ghcr.io/gethomepage/homepage:latest" "Hub ensure helper"
   fi
+  if [[ "${MISSION_CONTROL_ENABLE}" == "true" ]]; then
+    verify_require_file "${MISSION_CONTROL_FRONTEND_DIR}/package.json" "Mission Control frontend source"
+    verify_require_file "${MISSION_CONTROL_SOURCE_DIR}/backend/Dockerfile" "Mission Control backend source"
+    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "MISSION_CONTROL_SERVICE_NAME" "Hub ensure helper"
+    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "MISSION_CONTROL_API_HOST" "Hub ensure helper"
+    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "webhook-worker" "Hub ensure helper"
+  fi
 }
 
 verify_report_artifacts() {

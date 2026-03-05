@@ -72,6 +72,23 @@ APPS_REGISTER_SCRIPT=${edge_root}/bin/register_app.py
 APPS_DEPLOY_SCRIPT=${edge_root}/bin/deploy_app.sh
 APPS_SETUP_VENV=true
 APPS_VENV_PYTHON=python3
+MISSION_CONTROL_ENABLE=true
+MISSION_CONTROL_SERVICE_NAME=mission-control
+MISSION_CONTROL_HOST=mission-control.akhenda.net
+MISSION_CONTROL_SOURCE_REPO=https://github.com/abhi1693/openclaw-mission-control.git
+MISSION_CONTROL_SOURCE_REF=master
+MISSION_CONTROL_SOURCE_DIR=${edge_root}/apps/mission-control-src
+MISSION_CONTROL_FRONTEND_DIR=${edge_root}/apps/mission-control-src/frontend
+MISSION_CONTROL_API_HOST=mission-control-api.akhenda.net
+MISSION_CONTROL_AUTH_MODE=local
+MISSION_CONTROL_LOCAL_AUTH_TOKEN=12345678901234567890123456789012345678901234567890
+MISSION_CONTROL_DB_AUTO_MIGRATE=true
+MISSION_CONTROL_POSTGRES_DB=mission_control
+MISSION_CONTROL_POSTGRES_USER=postgres
+MISSION_CONTROL_POSTGRES_PASSWORD=postgres
+MISSION_CONTROL_RQ_QUEUE_NAME=default
+MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS=2.0
+MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES=3
 EDGE_NETWORK_NAME=openclaw-edge
 EDGE_SUBNET=172.30.0.0/24
 TRAEFIK_IP=172.30.0.2
@@ -147,6 +164,8 @@ test_apps_phase_dry_run_generates_registry_and_helpers() {
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/apps/docker-compose.yml"
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/register_app.py"
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/deploy_app.sh"
+  assert_contains "$output_file" "[apps] ensuring Mission Control source at ${edge_root}/apps/mission-control-src"
+  assert_contains "$output_file" "sudo -u openclaw -H /bin/bash -lc git clone --branch master --depth 1 https://github.com/abhi1693/openclaw-mission-control.git ${edge_root}/apps/mission-control-src"
   assert_contains "$output_file" "[apps] ensuring app runtime paths are owned by openclaw"
   assert_contains "$output_file" "chown -R openclaw:openclaw ${edge_root}/apps"
   assert_contains "$output_file" "install -d -m 0755 -o openclaw -g openclaw ${edge_root}/apps/hub-config"

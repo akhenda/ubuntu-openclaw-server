@@ -29,6 +29,21 @@ setup_apps_context() {
   HUB_PRIMARY_HOST="hub.example.com"
   HUB_ALIAS_HOST="apps.example.com"
   HUB_STYLE_PROFILE="modern-minimal"
+  MISSION_CONTROL_ENABLE="true"
+  MISSION_CONTROL_SERVICE_NAME="mission-control"
+  MISSION_CONTROL_HOST="mission-control.example.com"
+  MISSION_CONTROL_API_HOST="mission-control-api.example.com"
+  MISSION_CONTROL_SOURCE_DIR="/opt/openclaw/apps/mission-control-src"
+  MISSION_CONTROL_FRONTEND_DIR="/opt/openclaw/apps/mission-control-src/frontend"
+  MISSION_CONTROL_AUTH_MODE="local"
+  MISSION_CONTROL_LOCAL_AUTH_TOKEN="12345678901234567890123456789012345678901234567890"
+  MISSION_CONTROL_DB_AUTO_MIGRATE="true"
+  MISSION_CONTROL_POSTGRES_DB="mission_control"
+  MISSION_CONTROL_POSTGRES_USER="postgres"
+  MISSION_CONTROL_POSTGRES_PASSWORD="postgres"
+  MISSION_CONTROL_RQ_QUEUE_NAME="default"
+  MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS="2.0"
+  MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES="3"
   SOCKET_PROXY_ENDPOINT="http://docker-socket-proxy:2375"
 }
 
@@ -36,7 +51,9 @@ test_register_script_contains_homepage_labels_and_reserved_hub() {
   local register_script
   register_script="$(apps_render_register_script)"
 
-  assert_contains_text "$register_script" 'if app_name in {"traefik", RESERVED_BOT_NAME, HUB_SERVICE_NAME}:'
+  assert_contains_text "$register_script" 'MISSION_CONTROL_SERVICE_NAME = os.environ.get("MISSION_CONTROL_SERVICE_NAME", "mission-control")'
+  assert_contains_text "$register_script" 'reserved_names = {"traefik", RESERVED_BOT_NAME, HUB_SERVICE_NAME}'
+  assert_contains_text "$register_script" 'reserved_names.add(MISSION_CONTROL_SERVICE_NAME)'
   assert_contains_text "$register_script" '"homepage.group=Apps"'
   assert_contains_text "$register_script" 'f"homepage.name={app_name}"'
   assert_contains_text "$register_script" 'f"homepage.icon={icon_for_app(app_name)}"'
@@ -77,6 +94,33 @@ test_ensure_hub_script_contains_routes_and_homepage_runtime() {
   assert_contains_text "$ensure_hub_script" 'port: ${SOCKET_PROXY_PORT}'
   assert_contains_text "$ensure_hub_script" 'protocol: ${SOCKET_PROXY_PROTOCOL}'
   assert_contains_text "$ensure_hub_script" 'services_config_path = os.path.join(hub_config_dir, "services.yaml")'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_ENABLE="${MISSION_CONTROL_ENABLE:-true}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_SERVICE_NAME="${MISSION_CONTROL_SERVICE_NAME:-mission-control}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_HOST="${MISSION_CONTROL_HOST:-mission-control.example.com}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_API_HOST="${MISSION_CONTROL_API_HOST:-mission-control-api.example.com}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_SOURCE_DIR="${MISSION_CONTROL_SOURCE_DIR:-/opt/openclaw/apps/mission-control-src}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_FRONTEND_DIR="${MISSION_CONTROL_FRONTEND_DIR:-/opt/openclaw/apps/mission-control-src/frontend}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_AUTH_MODE="${MISSION_CONTROL_AUTH_MODE:-local}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_LOCAL_AUTH_TOKEN="${MISSION_CONTROL_LOCAL_AUTH_TOKEN:-12345678901234567890123456789012345678901234567890}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_DB_AUTO_MIGRATE="${MISSION_CONTROL_DB_AUTO_MIGRATE:-true}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_POSTGRES_DB="${MISSION_CONTROL_POSTGRES_DB:-mission_control}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_POSTGRES_USER="${MISSION_CONTROL_POSTGRES_USER:-postgres}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_POSTGRES_PASSWORD="${MISSION_CONTROL_POSTGRES_PASSWORD:-postgres}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_RQ_QUEUE_NAME="${MISSION_CONTROL_RQ_QUEUE_NAME:-default}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS="${MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS:-2.0}"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES="${MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES:-3}"'
+  assert_contains_text "$ensure_hub_script" 'homepage.name=Mission Control'
+  assert_contains_text "$ensure_hub_script" 'postgres:16-alpine'
+  assert_contains_text "$ensure_hub_script" 'redis:7-alpine'
+  assert_contains_text "$ensure_hub_script" 'backend/Dockerfile'
+  assert_contains_text "$ensure_hub_script" 'app.workers.webhook_worker'
+  assert_contains_text "$ensure_hub_script" 'f"traefik.http.services.{mission_control_backend_service_name}.loadbalancer.server.port=8000"'
+  assert_contains_text "$ensure_hub_script" 'VITE_API_BASE_URL'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_DB_SERVICE_NAME="${MISSION_CONTROL_SERVICE_NAME}-db"'
+  assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_WORKER_SERVICE_NAME="${MISSION_CONTROL_SERVICE_NAME}-webhook-worker"'
+  assert_contains_text "$ensure_hub_script" 'docker compose --project-directory "${PROJECT_DIR}" -f "${APPS_COMPOSE_FILE}" up -d'
+  assert_contains_text "$ensure_hub_script" '"${MISSION_CONTROL_BACKEND_SERVICE_NAME}"'
+  assert_contains_text "$ensure_hub_script" '"${MISSION_CONTROL_WORKER_SERVICE_NAME}"'
   assert_contains_text "$ensure_hub_script" 'OK: wrote hub services catalog ->'
   assert_contains_text "$ensure_hub_script" 'docker compose --project-directory "${PROJECT_DIR}" -f "${APPS_COMPOSE_FILE}" up -d "${HUB_SERVICE_NAME}"'
   if grep -Fq '/var/run/docker.sock:/var/run/docker.sock:ro' <<< "$ensure_hub_script"; then

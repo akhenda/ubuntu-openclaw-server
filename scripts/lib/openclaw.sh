@@ -334,6 +334,7 @@ Never create an app named:
 - traefik
 - ${BOT_NAME}
 - hub
+- ${MISSION_CONTROL_SERVICE_NAME}
 
 ## Global stack + global apps compose
 - The edge stack runs at: ${EDGE_ROOT_DIR}/edge/docker-compose.yml (Traefik + cloudflared + docker-socket-proxy when enabled). Do NOT modify it when adding apps.
