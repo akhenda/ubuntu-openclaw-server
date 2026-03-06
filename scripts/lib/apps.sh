@@ -500,10 +500,15 @@ if mission_control_enabled:
     mission_control_service = {
         "build": {
             "context": mission_control_frontend_dir,
+            "args": {
+                "NEXT_PUBLIC_API_URL": mission_control_api_base_url,
+                "NEXT_PUBLIC_AUTH_MODE": mission_control_auth_mode,
+            },
         },
         "restart": "unless-stopped",
         "environment": {
-            "VITE_API_BASE_URL": mission_control_api_base_url,
+            "NEXT_PUBLIC_API_URL": mission_control_api_base_url,
+            "NEXT_PUBLIC_AUTH_MODE": mission_control_auth_mode,
         },
         "depends_on": {
             mission_control_backend_service_name: {"condition": "service_started"},
@@ -518,7 +523,7 @@ if mission_control_enabled:
             "dockerfile": "backend/Dockerfile",
         },
         "restart": "unless-stopped",
-        "command": ["python", "-m", "app.workers.webhook_worker"],
+        "command": ["python", "scripts/rq-docker", "worker"],
         "environment": {
             "DATABASE_URL": mission_control_database_url,
             "DB_AUTO_MIGRATE": "false",

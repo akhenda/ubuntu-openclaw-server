@@ -219,7 +219,12 @@ openclaw_host_global_compose_env_template_path() {
 
 openclaw_render_config_json() {
   local runtime_home
+  local allowed_origins
   runtime_home="$(openclaw_runtime_home)"
+  allowed_origins="\"https://${BOT_NAME}.${APPS_DOMAIN}\""
+  if [[ "${MISSION_CONTROL_ENABLE:-false}" == "true" ]]; then
+    allowed_origins+=", \"https://${MISSION_CONTROL_HOST}\""
+  fi
 
   cat <<EOF_JSON
 {
@@ -236,7 +241,7 @@ openclaw_render_config_json() {
       "mode": "password"
     },
     "controlUi": {
-      "allowedOrigins": ["https://${BOT_NAME}.${APPS_DOMAIN}"]
+      "allowedOrigins": [${allowed_origins}]
     }
   },
   "hooks": {

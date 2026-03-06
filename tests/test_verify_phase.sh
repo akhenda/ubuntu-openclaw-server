@@ -39,6 +39,7 @@ TAILSCALE_AUTHKEY=tskey-auth-test-placeholder-0123456789abcdef
 TAILSCALE_ALLOW_PLACEHOLDER_AUTHKEY=true
 OPENCLAW_GATEWAY_TOKEN=tok_abcdefghijklmnopqrstuvwxyz
 OPENCLAW_GATEWAY_PASSWORD=StrongPass1234!
+OPENCLAW_MISSION_CONTROL_GATEWAY_HOST=gateway.akhenda.net
 ADMIN_USER=hendaz
 RUNTIME_USER=openclaw
 HOST_FQDN=node.akhenda.net
