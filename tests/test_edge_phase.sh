@@ -57,6 +57,7 @@ EDGE_REQUIRE_TUNNEL_CREDENTIALS=true
 TRAEFIK_IMAGE=traefik:v3.0
 CLOUDFLARED_IMAGE=cloudflare/cloudflared:latest
 TRAEFIK_DASHBOARD_HOST=traefik.akhenda.net
+OPENCLAW_MISSION_CONTROL_GATEWAY_HOST=gateway.akhenda.net
 TRAEFIK_DASHBOARD_USERS=admin:hashplaceholder
 CLOUDFLARED_CREDENTIALS_FILE=${creds_file}
 EDGE_NETWORK_NAME=openclaw-edge

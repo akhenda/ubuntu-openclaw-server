@@ -130,6 +130,10 @@ verify_edge_artifacts() {
     "${EDGE_ROOT_DIR}/edge/traefik/dynamic/openclaw.yml" \
     "url: http://${OPENCLAW_EDGE_UPSTREAM_HOST}:${OPENCLAW_GATEWAY_PORT}" \
     "Traefik OpenClaw dynamic config"
+  verify_require_contains \
+    "${EDGE_ROOT_DIR}/edge/traefik/dynamic/openclaw.yml" \
+    "${OPENCLAW_MISSION_CONTROL_GATEWAY_HOST}" \
+    "Traefik OpenClaw dynamic config"
 
   if [[ "${SOCKET_PROXY_ENABLE}" == "true" ]]; then
     local edge_compose="${EDGE_ROOT_DIR}/edge/docker-compose.yml"

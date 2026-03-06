@@ -165,7 +165,7 @@ edge_render_openclaw_dynamic_config() {
 http:
   routers:
     openclaw:
-      rule: Host(\`${BOT_NAME}.${APPS_DOMAIN}\`)
+      rule: Host(\`${BOT_NAME}.${APPS_DOMAIN}\`) || Host(\`${OPENCLAW_MISSION_CONTROL_GATEWAY_HOST}\`)
       entryPoints:
         - web
       service: openclaw

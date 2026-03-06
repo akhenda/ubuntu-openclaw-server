@@ -44,6 +44,7 @@ test_edge_socket_proxy_enabled_contract() {
   BOT_NAME="mckay"
   OPENCLAW_GATEWAY_PORT="18789"
   OPENCLAW_EDGE_UPSTREAM_HOST="172.30.0.1"
+  OPENCLAW_MISSION_CONTROL_GATEWAY_HOST="gateway.example.com"
   TRAEFIK_IP="172.30.0.2"
   CLOUDFLARED_IP="172.30.0.3"
 
@@ -56,6 +57,7 @@ test_edge_socket_proxy_enabled_contract() {
   assert_contains_text "$compose_cfg" "depends_on:"
   assert_contains_text "$compose_cfg" "docker-socket-proxy"
   assert_contains_text "$dynamic_cfg" 'url: http://172.30.0.1:18789'
+  assert_contains_text "$dynamic_cfg" 'Host(`mckay.example.com`) || Host(`gateway.example.com`)'
 
   local sock_mount_count
   sock_mount_count="$(grep -Fc '/var/run/docker.sock:/var/run/docker.sock:ro' <<< "$compose_cfg")"
@@ -80,6 +82,7 @@ test_edge_socket_proxy_disabled_contract() {
   BOT_NAME="mckay"
   OPENCLAW_GATEWAY_PORT="18789"
   OPENCLAW_EDGE_UPSTREAM_HOST="172.30.0.1"
+  OPENCLAW_MISSION_CONTROL_GATEWAY_HOST="gateway.example.com"
   TRAEFIK_IP="172.30.0.2"
   CLOUDFLARED_IP="172.30.0.3"
 

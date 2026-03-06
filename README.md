@@ -102,6 +102,12 @@ Required core values:
 11. `ADMIN_SSH_PUBLIC_KEY` or `ADMIN_SSH_PUBLIC_KEY_FILE`
 12. Optional: `ADMIN_USER_PASSWORD_HASH` (for local `sudo -i` password prompt)
 
+Gateway routing defaults:
+
+1. Human UI host: `https://<BOT_NAME>.<APPS_DOMAIN>`
+2. Mission Control gateway host: `wss://gateway.<APPS_DOMAIN>:443`
+3. `OPENCLAW_MISSION_CONTROL_GATEWAY_HOST=gateway.<APPS_DOMAIN>`
+
 Hub contract defaults:
 
 1. `HUB_ENABLE=true`

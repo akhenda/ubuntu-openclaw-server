@@ -78,6 +78,7 @@ OPENCLAW_BUILD_IMAGE=true
 OPENCLAW_START_STACK=true
 OPENCLAW_MANAGE_SYSTEMD=true
 OPENCLAW_GATEWAY_PORT=18789
+OPENCLAW_MISSION_CONTROL_GATEWAY_HOST=gateway.akhenda.net
 OPENCLAW_CONFIG_FILE=/home/openclaw/.openclaw/openclaw.json
 OPENCLAW_POLICY_FILE=/home/openclaw/.openclaw/workspace/policies/deploy/AGENTS.md
 OPENCLAW_POLICY_INJECTION=true
@@ -268,9 +269,11 @@ test_openclaw_config_bootstraps_app_builder_policy() {
   local rendered
   rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/openclaw.sh'; \
     BOT_NAME=mckay; APPS_DOMAIN=akhenda.net; TRAEFIK_IP=172.30.0.2; \
+    MISSION_CONTROL_ENABLE=true; MISSION_CONTROL_HOST=mission-control.akhenda.net; \
     openclaw_render_config_json")"
 
   assert_text_contains "$rendered" '"policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md", "APP_BUILDER.md"'
+  assert_text_contains "$rendered" '"allowedOrigins": ["https://mckay.akhenda.net", "https://mission-control.akhenda.net"]'
 }
 
 test_openclaw_renders_global_compose_env_with_real_values() {
