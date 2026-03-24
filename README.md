@@ -70,6 +70,14 @@ make test-vagrant
 make run-install
 ```
 
+OpenClaw update helper:
+
+```bash
+make run-update
+# or pull first, then reinstall from the refreshed checkout
+bash scripts/update_openclaw.sh --config config/.env --pull
+```
+
 ## Make Targets
 
 - `make deps`: alias of `make deps-dev`
@@ -79,6 +87,7 @@ make run-install
 - `make lint`: bash syntax + yamllint
 - `make check-config`: validate `config/.env` and print effective config
 - `make run-install`: execute full installer
+- `make run-update`: rerun installer for OpenClaw updates using current repo/config
 - `make test-scripts`: run Bash phase tests
 - `make test-docker`: run Molecule docker scenario
 - `make test-vagrant`: run Molecule vagrant scenario

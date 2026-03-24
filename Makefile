@@ -20,6 +20,7 @@ endif
 .PHONY: \
 	help \
 	deps deps-dev deps-test deps-lint check-config run-install test-scripts \
+	run-update \
 	lint test-docker test-vagrant \
 	run-prod run-vagrant run-shell run-socket-proxy run-traefik run-homepage \
 	local-openclaw-up local-openclaw-tunnel local-openclaw-down
@@ -35,6 +36,7 @@ help:
 	@echo "  make test-vagrant                 Run Molecule vagrant scenario (Bash installer live)"
 	@echo "  make check-config                 Validate config file (CONFIG_FILE=...)"
 	@echo "  make run-install                  Run full Bash installer"
+	@echo "  make run-update                   Update OpenClaw using current repo/config"
 	@echo "  make test-scripts                 Run Bash phase test suite"
 
 deps: deps-dev
@@ -54,6 +56,9 @@ check-config:
 run-install:
 	bash scripts/install.sh --config $(CONFIG_FILE) --print-config
 
+run-update:
+	bash scripts/update_openclaw.sh --config $(CONFIG_FILE)
+
 test-scripts:
 	bash tests/test_packages_phase.sh
 	bash tests/test_system_phase.sh
@@ -66,6 +71,7 @@ test-scripts:
 	bash tests/test_edge_socket_proxy_contract.sh
 	bash tests/test_dns_phase.sh
 	bash tests/test_openclaw_phase.sh
+	bash tests/test_update_script.sh
 	bash tests/test_apps_phase.sh
 	bash tests/test_apps_hub_phase.sh
 	bash tests/test_systemd_phase.sh
