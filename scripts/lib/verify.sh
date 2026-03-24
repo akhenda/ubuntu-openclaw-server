@@ -231,6 +231,11 @@ verify_apps_artifacts() {
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "MISSION_CONTROL_API_HOST" "Hub ensure helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "webhook-worker" "Hub ensure helper"
   fi
+  if [[ "${CLAWPORT_ENABLE}" == "true" ]]; then
+    verify_require_file "${CLAWPORT_SOURCE_DIR}/package.json" "ClawPort source"
+    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "CLAWPORT_SERVICE_NAME" "Hub ensure helper"
+    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "homepage.name=ClawPort" "Hub ensure helper"
+  fi
 }
 
 verify_report_artifacts() {

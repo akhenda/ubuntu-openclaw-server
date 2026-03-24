@@ -82,6 +82,7 @@ EDGE_NETWORK_NAME = "${EDGE_NETWORK_NAME}"
 RESERVED_BOT_NAME = os.environ.get("BOT_NAME", "${BOT_NAME}")
 HUB_SERVICE_NAME = "hub"
 MISSION_CONTROL_SERVICE_NAME = os.environ.get("MISSION_CONTROL_SERVICE_NAME", "${MISSION_CONTROL_SERVICE_NAME}")
+CLAWPORT_SERVICE_NAME = os.environ.get("CLAWPORT_SERVICE_NAME", "${CLAWPORT_SERVICE_NAME}")
 
 def die(msg: str) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
@@ -119,6 +120,8 @@ def main() -> None:
     reserved_names = {"traefik", RESERVED_BOT_NAME, HUB_SERVICE_NAME}
     if MISSION_CONTROL_SERVICE_NAME:
         reserved_names.add(MISSION_CONTROL_SERVICE_NAME)
+    if CLAWPORT_SERVICE_NAME:
+        reserved_names.add(CLAWPORT_SERVICE_NAME)
 
     if app_name in reserved_names:
         die(f"Reserved app name: {app_name}")
@@ -197,7 +200,17 @@ MISSION_CONTROL_POSTGRES_PASSWORD="\${MISSION_CONTROL_POSTGRES_PASSWORD:-${MISSI
 MISSION_CONTROL_RQ_QUEUE_NAME="\${MISSION_CONTROL_RQ_QUEUE_NAME:-${MISSION_CONTROL_RQ_QUEUE_NAME}}"
 MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS="\${MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS:-${MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS}}"
 MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES="\${MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES:-${MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES}}"
+OPENCLAW_GATEWAY_PORT="\${OPENCLAW_GATEWAY_PORT:-${OPENCLAW_GATEWAY_PORT:-}}"
+OPENCLAW_GATEWAY_TOKEN="\${OPENCLAW_GATEWAY_TOKEN:-${OPENCLAW_GATEWAY_TOKEN:-}}"
+OPENCLAW_GATEWAY_PASSWORD="\${OPENCLAW_GATEWAY_PASSWORD:-${OPENCLAW_GATEWAY_PASSWORD:-}}"
 SOCKET_PROXY_ENDPOINT="\${SOCKET_PROXY_ENDPOINT:-${SOCKET_PROXY_ENDPOINT}}"
+CLAWPORT_ENABLE="\${CLAWPORT_ENABLE:-${CLAWPORT_ENABLE}}"
+CLAWPORT_SERVICE_NAME="\${CLAWPORT_SERVICE_NAME:-${CLAWPORT_SERVICE_NAME}}"
+CLAWPORT_HOST="\${CLAWPORT_HOST:-${CLAWPORT_HOST}}"
+CLAWPORT_SOURCE_DIR="\${CLAWPORT_SOURCE_DIR:-${CLAWPORT_SOURCE_DIR}}"
+CLAWPORT_PORT="\${CLAWPORT_PORT:-${CLAWPORT_PORT}}"
+CLAWPORT_OPENCLAW_BIN="\${CLAWPORT_OPENCLAW_BIN:-${CLAWPORT_OPENCLAW_BIN}}"
+CLAWPORT_WORKSPACE_PATH="\${CLAWPORT_WORKSPACE_PATH:-${CLAWPORT_WORKSPACE_PATH}}"
 HUB_SERVICE_NAME="hub"
 HUB_IMAGE="ghcr.io/gethomepage/homepage:latest"
 HUB_CONFIG_DIR="\${APPS_ROOT_DIR}/hub-config"
@@ -321,6 +334,9 @@ export MISSION_CONTROL_FRONTEND_DIR MISSION_CONTROL_SOURCE_DIR MISSION_CONTROL_A
 export MISSION_CONTROL_LOCAL_AUTH_TOKEN MISSION_CONTROL_DB_AUTO_MIGRATE
 export MISSION_CONTROL_POSTGRES_DB MISSION_CONTROL_POSTGRES_USER MISSION_CONTROL_POSTGRES_PASSWORD
 export MISSION_CONTROL_RQ_QUEUE_NAME MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES
+export OPENCLAW_GATEWAY_PORT OPENCLAW_GATEWAY_TOKEN OPENCLAW_GATEWAY_PASSWORD
+export CLAWPORT_ENABLE CLAWPORT_SERVICE_NAME CLAWPORT_HOST CLAWPORT_SOURCE_DIR CLAWPORT_PORT
+export CLAWPORT_OPENCLAW_BIN CLAWPORT_WORKSPACE_PATH
 "\${PYTHON_BIN}" - <<'PY'
 import os
 from ruamel.yaml import YAML
@@ -347,6 +363,13 @@ mission_control_postgres_password = os.environ.get("MISSION_CONTROL_POSTGRES_PAS
 mission_control_rq_queue_name = os.environ.get("MISSION_CONTROL_RQ_QUEUE_NAME", "default").strip() or "default"
 mission_control_rq_dispatch_throttle_seconds = os.environ.get("MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS", "2.0").strip() or "2.0"
 mission_control_rq_dispatch_max_retries = os.environ.get("MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES", "3").strip() or "3"
+clawport_enabled = os.environ.get("CLAWPORT_ENABLE", "false").strip().lower() == "true"
+clawport_service_name = os.environ.get("CLAWPORT_SERVICE_NAME", "clawport-ui").strip() or "clawport-ui"
+clawport_host = os.environ.get("CLAWPORT_HOST", "").strip()
+clawport_source_dir = os.environ.get("CLAWPORT_SOURCE_DIR", "").strip()
+clawport_port = os.environ.get("CLAWPORT_PORT", "3000").strip() or "3000"
+clawport_openclaw_bin = os.environ.get("CLAWPORT_OPENCLAW_BIN", "").strip()
+clawport_workspace_path = os.environ.get("CLAWPORT_WORKSPACE_PATH", "").strip()
 services_config_path = os.path.join(hub_config_dir, "services.yaml")
 
 yaml = YAML()
@@ -568,6 +591,50 @@ else:
     if "volumes" in doc and isinstance(doc["volumes"], dict):
         doc["volumes"].pop(mission_control_volume_name, None)
 
+if clawport_enabled:
+    if not clawport_host:
+        raise SystemExit("CLAWPORT_HOST must be set when CLAWPORT_ENABLE=true")
+    if not clawport_source_dir:
+        raise SystemExit("CLAWPORT_SOURCE_DIR must be set when CLAWPORT_ENABLE=true")
+    if not clawport_openclaw_bin:
+        raise SystemExit("CLAWPORT_OPENCLAW_BIN must be set when CLAWPORT_ENABLE=true")
+    if not clawport_workspace_path:
+        raise SystemExit("CLAWPORT_WORKSPACE_PATH must be set when CLAWPORT_ENABLE=true")
+    if not clawport_port.isdigit():
+        raise SystemExit("CLAWPORT_PORT must be numeric when CLAWPORT_ENABLE=true")
+
+    services[clawport_service_name] = {
+        "build": {
+            "context": clawport_source_dir,
+        },
+        "restart": "unless-stopped",
+        "environment": {
+            "OPENCLAW_BIN": clawport_openclaw_bin,
+            "WORKSPACE_PATH": clawport_workspace_path,
+            "OPENCLAW_GATEWAY_PORT": os.environ.get("OPENCLAW_GATEWAY_PORT", "").strip(),
+            "OPENCLAW_GATEWAY_TOKEN": os.environ.get("OPENCLAW_GATEWAY_TOKEN", "").strip(),
+            "OPENCLAW_GATEWAY_PASSWORD": os.environ.get("OPENCLAW_GATEWAY_PASSWORD", "").strip(),
+        },
+        "volumes": [
+            f"{clawport_workspace_path}:{clawport_workspace_path}",
+        ],
+        "networks": [edge_network_name],
+        "labels": [
+            "traefik.enable=true",
+            f"traefik.docker.network={edge_network_name}",
+            f'traefik.http.routers.{clawport_service_name}.rule=Host("{clawport_host}")',
+            f"traefik.http.routers.{clawport_service_name}.entrypoints=web",
+            f"traefik.http.services.{clawport_service_name}.loadbalancer.server.port={clawport_port}",
+            "homepage.group=Apps",
+            "homepage.name=ClawPort",
+            "homepage.icon=mdi-view-dashboard-outline",
+            f"homepage.href=https://{clawport_host}",
+            "homepage.description=ClawPort workspace dashboard",
+        ],
+    }
+else:
+    services.pop(clawport_service_name, None)
+
 grouped_services = {}
 for service_name, service_cfg in services.items():
     if service_name == hub_service_name:
@@ -660,6 +727,8 @@ if mission_control_enabled:
     if mission_control_api_host:
         mission_control_routes.append(mission_control_api_host)
     print(f"OK: ensured mission control routes -> {', '.join(mission_control_routes)}")
+if clawport_enabled:
+    print(f"OK: ensured clawport route -> {clawport_host}")
 print(f"OK: wrote hub services catalog -> {services_config_path}")
 PY
 
@@ -683,6 +752,12 @@ if [[ "\${MISSION_CONTROL_ENABLE}" == "true" ]]; then
     "\${MISSION_CONTROL_BACKEND_SERVICE_NAME}" \
     "\${MISSION_CONTROL_SERVICE_NAME}" \
     "\${MISSION_CONTROL_WORKER_SERVICE_NAME}"
+fi
+if [[ "\${CLAWPORT_ENABLE}" == "true" ]]; then
+  docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" up -d \
+    "\${CLAWPORT_SERVICE_NAME}"
+  docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" ps \
+    "\${CLAWPORT_SERVICE_NAME}"
 fi
 EOF
 }
@@ -788,6 +863,49 @@ apps_sync_mission_control_source_if_enabled() {
     die "[apps] Mission Control backend Dockerfile missing: ${MISSION_CONTROL_SOURCE_DIR}/backend/Dockerfile"
 }
 
+apps_sync_clawport_source_if_enabled() {
+  if [[ "${CLAWPORT_ENABLE}" != "true" ]]; then
+    log_info "[apps] CLAWPORT_ENABLE=false; skipping ClawPort source sync"
+    return 0
+  fi
+
+  log_info "[apps] ensuring ClawPort source at ${CLAWPORT_SOURCE_DIR}"
+  apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "$(dirname "${CLAWPORT_SOURCE_DIR}")"
+
+  local quoted_dir quoted_ref quoted_repo
+  printf -v quoted_dir '%q' "${CLAWPORT_SOURCE_DIR}"
+  printf -v quoted_ref '%q' "${CLAWPORT_SOURCE_REF}"
+  printf -v quoted_repo '%q' "${CLAWPORT_SOURCE_REPO}"
+
+  if [[ "${DRY_RUN:-false}" == "true" ]]; then
+    if [[ -d "${CLAWPORT_SOURCE_DIR}/.git" ]]; then
+      apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} fetch --all --tags"
+      apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} checkout ${quoted_ref}"
+      apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} pull --ff-only origin ${quoted_ref}"
+    else
+      apps_run_runtime /bin/bash -lc "git clone --branch ${quoted_ref} --depth 1 ${quoted_repo} ${quoted_dir}"
+    fi
+    return 0
+  fi
+
+  command_exists git || die "[apps] git is required for ClawPort source sync"
+
+  if [[ -d "${CLAWPORT_SOURCE_DIR}" && ! -d "${CLAWPORT_SOURCE_DIR}/.git" ]]; then
+    die "[apps] ClawPort source path exists but is not a git repository: ${CLAWPORT_SOURCE_DIR}"
+  fi
+
+  if [[ -d "${CLAWPORT_SOURCE_DIR}/.git" ]]; then
+    apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} fetch --all --tags"
+    apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} checkout ${quoted_ref}"
+    apps_run_runtime /bin/bash -lc "git -C ${quoted_dir} pull --ff-only origin ${quoted_ref}"
+  else
+    apps_run_runtime /bin/bash -lc "git clone --branch ${quoted_ref} --depth 1 ${quoted_repo} ${quoted_dir}"
+  fi
+
+  [[ -f "${CLAWPORT_SOURCE_DIR}/package.json" ]] || \
+    die "[apps] ClawPort package.json missing: ${CLAWPORT_SOURCE_DIR}/package.json"
+}
+
 apps_fix_runtime_permissions() {
   log_info "[apps] ensuring app runtime paths are owned by ${RUNTIME_USER}"
   apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${APPS_ROOT_DIR}"
@@ -862,6 +980,7 @@ phase_apps() {
   apps_setup_venv_if_enabled
   apps_write_runtime_files
   apps_sync_mission_control_source_if_enabled
+  apps_sync_clawport_source_if_enabled
   apps_fix_runtime_permissions
   apps_ensure_hub_during_install
   log_info "[apps] apps registry setup complete"

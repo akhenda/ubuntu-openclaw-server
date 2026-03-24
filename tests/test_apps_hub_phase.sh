@@ -44,6 +44,15 @@ setup_apps_context() {
   MISSION_CONTROL_RQ_QUEUE_NAME="default"
   MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS="2.0"
   MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES="3"
+  CLAWPORT_ENABLE="true"
+  CLAWPORT_SERVICE_NAME="clawport-ui"
+  CLAWPORT_HOST="ui.example.com"
+  CLAWPORT_SOURCE_REPO="https://github.com/JohnRiceML/clawport-ui.git"
+  CLAWPORT_SOURCE_REF="main"
+  CLAWPORT_SOURCE_DIR="/opt/openclaw/apps/clawport-ui-src"
+  CLAWPORT_PORT="3000"
+  CLAWPORT_OPENCLAW_BIN="/home/openclaw/.npm-global/bin/openclaw"
+  CLAWPORT_WORKSPACE_PATH="/home/openclaw/.openclaw/workspace"
   SOCKET_PROXY_ENDPOINT="http://docker-socket-proxy:2375"
 }
 
@@ -52,8 +61,10 @@ test_register_script_contains_homepage_labels_and_reserved_hub() {
   register_script="$(apps_render_register_script)"
 
   assert_contains_text "$register_script" 'MISSION_CONTROL_SERVICE_NAME = os.environ.get("MISSION_CONTROL_SERVICE_NAME", "mission-control")'
+  assert_contains_text "$register_script" 'CLAWPORT_SERVICE_NAME = os.environ.get("CLAWPORT_SERVICE_NAME", "clawport-ui")'
   assert_contains_text "$register_script" 'reserved_names = {"traefik", RESERVED_BOT_NAME, HUB_SERVICE_NAME}'
   assert_contains_text "$register_script" 'reserved_names.add(MISSION_CONTROL_SERVICE_NAME)'
+  assert_contains_text "$register_script" 'reserved_names.add(CLAWPORT_SERVICE_NAME)'
   assert_contains_text "$register_script" '"homepage.group=Apps"'
   assert_contains_text "$register_script" 'f"homepage.name={app_name}"'
   assert_contains_text "$register_script" 'f"homepage.icon={icon_for_app(app_name)}"'
@@ -109,7 +120,19 @@ test_ensure_hub_script_contains_routes_and_homepage_runtime() {
   assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_RQ_QUEUE_NAME="${MISSION_CONTROL_RQ_QUEUE_NAME:-default}"'
   assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS="${MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS:-2.0}"'
   assert_contains_text "$ensure_hub_script" 'MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES="${MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES:-3}"'
+  assert_contains_text "$ensure_hub_script" 'CLAWPORT_ENABLE="${CLAWPORT_ENABLE:-true}"'
+  assert_contains_text "$ensure_hub_script" 'CLAWPORT_SERVICE_NAME="${CLAWPORT_SERVICE_NAME:-clawport-ui}"'
+  assert_contains_text "$ensure_hub_script" 'CLAWPORT_HOST="${CLAWPORT_HOST:-ui.example.com}"'
+  assert_contains_text "$ensure_hub_script" 'CLAWPORT_SOURCE_DIR="${CLAWPORT_SOURCE_DIR:-/opt/openclaw/apps/clawport-ui-src}"'
+  assert_contains_text "$ensure_hub_script" 'CLAWPORT_PORT="${CLAWPORT_PORT:-3000}"'
+  assert_contains_text "$ensure_hub_script" 'CLAWPORT_OPENCLAW_BIN="${CLAWPORT_OPENCLAW_BIN:-/home/openclaw/.npm-global/bin/openclaw}"'
+  assert_contains_text "$ensure_hub_script" 'CLAWPORT_WORKSPACE_PATH="${CLAWPORT_WORKSPACE_PATH:-/home/openclaw/.openclaw/workspace}"'
   assert_contains_text "$ensure_hub_script" 'homepage.name=Mission Control'
+  assert_contains_text "$ensure_hub_script" 'homepage.name=ClawPort'
+  assert_contains_text "$ensure_hub_script" 'homepage.href=https://{clawport_host}'
+  assert_contains_text "$ensure_hub_script" '"OPENCLAW_BIN": clawport_openclaw_bin'
+  assert_contains_text "$ensure_hub_script" '"WORKSPACE_PATH": clawport_workspace_path'
+  assert_contains_text "$ensure_hub_script" 'traefik.http.routers.{clawport_service_name}.rule=Host("{clawport_host}")'
   assert_contains_text "$ensure_hub_script" 'postgres:16-alpine'
   assert_contains_text "$ensure_hub_script" 'redis:7-alpine'
   assert_contains_text "$ensure_hub_script" 'backend/Dockerfile'

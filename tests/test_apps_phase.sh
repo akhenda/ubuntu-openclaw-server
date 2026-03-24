@@ -89,6 +89,15 @@ MISSION_CONTROL_POSTGRES_PASSWORD=postgres
 MISSION_CONTROL_RQ_QUEUE_NAME=default
 MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS=2.0
 MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES=3
+CLAWPORT_ENABLE=true
+CLAWPORT_SERVICE_NAME=clawport-ui
+CLAWPORT_HOST=ui.akhenda.net
+CLAWPORT_SOURCE_REPO=https://github.com/JohnRiceML/clawport-ui.git
+CLAWPORT_SOURCE_REF=main
+CLAWPORT_SOURCE_DIR=${edge_root}/apps/clawport-ui-src
+CLAWPORT_PORT=3000
+CLAWPORT_OPENCLAW_BIN=/home/openclaw/.npm-global/bin/openclaw
+CLAWPORT_WORKSPACE_PATH=/home/openclaw/.openclaw/workspace
 EDGE_NETWORK_NAME=openclaw-edge
 EDGE_SUBNET=172.30.0.0/24
 TRAEFIK_IP=172.30.0.2
@@ -166,6 +175,8 @@ test_apps_phase_dry_run_generates_registry_and_helpers() {
   assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/bin/deploy_app.sh"
   assert_contains "$output_file" "[apps] ensuring Mission Control source at ${edge_root}/apps/mission-control-src"
   assert_contains "$output_file" "sudo -u openclaw -H /bin/bash -lc git clone --branch master --depth 1 https://github.com/abhi1693/openclaw-mission-control.git ${edge_root}/apps/mission-control-src"
+  assert_contains "$output_file" "[apps] ensuring ClawPort source at ${edge_root}/apps/clawport-ui-src"
+  assert_contains "$output_file" "sudo -u openclaw -H /bin/bash -lc git clone --branch main --depth 1 https://github.com/JohnRiceML/clawport-ui.git ${edge_root}/apps/clawport-ui-src"
   assert_contains "$output_file" "[apps] ensuring app runtime paths are owned by openclaw"
   assert_contains "$output_file" "chown -R openclaw:openclaw ${edge_root}/apps"
   assert_contains "$output_file" "install -d -m 0755 -o openclaw -g openclaw ${edge_root}/apps/hub-config"
@@ -274,11 +285,21 @@ test_apps_phase_defaults_mission_control_to_same_origin_api() {
     MISSION_CONTROL_RQ_QUEUE_NAME=default; \
     MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS=2.0; \
     MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES=3; \
+    CLAWPORT_ENABLE=true; \
+    CLAWPORT_SERVICE_NAME=clawport-ui; \
+    CLAWPORT_HOST=ui.akhenda.net; \
+    CLAWPORT_SOURCE_DIR=/opt/openclaw/apps/clawport-ui-src; \
+    CLAWPORT_PORT=3000; \
+    CLAWPORT_OPENCLAW_BIN=/home/openclaw/.npm-global/bin/openclaw; \
+    CLAWPORT_WORKSPACE_PATH=/home/openclaw/.openclaw/workspace; \
     PYTHON_BIN=python3; \
     apps_render_ensure_hub_script")"
 
   assert_text_contains "$rendered" 'mission_control_frontend_api_url = "/api"'
   assert_text_contains "$rendered" 'mission_control_public_base_url = f"https://{mission_control_host}"'
+  assert_text_contains "$rendered" 'clawport_enabled = os.environ.get("CLAWPORT_ENABLE", "false").strip().lower() == "true"'
+  assert_text_contains "$rendered" 'clawport_host = os.environ.get("CLAWPORT_HOST", "").strip()'
+  assert_text_contains "$rendered" 'clawport_source_dir = os.environ.get("CLAWPORT_SOURCE_DIR", "").strip()'
   assert_text_contains "$rendered" 'PathPrefix("/api")'
   assert_text_contains "$rendered" 'middlewares={mission_control_backend_service_name}-strip-api-prefix'
   assert_text_contains "$rendered" 'stripprefix.prefixes=/api'
@@ -306,12 +327,20 @@ test_apps_phase_optionally_keeps_legacy_mission_control_api_host() {
     MISSION_CONTROL_RQ_QUEUE_NAME=default; \
     MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS=2.0; \
     MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES=3; \
+    CLAWPORT_ENABLE=true; \
+    CLAWPORT_SERVICE_NAME=clawport-ui; \
+    CLAWPORT_HOST=ui.akhenda.net; \
+    CLAWPORT_SOURCE_DIR=/opt/openclaw/apps/clawport-ui-src; \
+    CLAWPORT_PORT=3000; \
+    CLAWPORT_OPENCLAW_BIN=/home/openclaw/.npm-global/bin/openclaw; \
+    CLAWPORT_WORKSPACE_PATH=/home/openclaw/.openclaw/workspace; \
     PYTHON_BIN=python3; \
     apps_render_ensure_hub_script")"
 
   assert_text_contains "$rendered" 'mission_control_frontend_api_url = "/api"'
   assert_text_contains "$rendered" 'mission_control_api_host = os.environ.get("MISSION_CONTROL_API_HOST", "").strip()'
   assert_text_contains "$rendered" 'mission_control_backend_service_name}-legacy.rule=Host("{mission_control_api_host}")'
+  assert_text_contains "$rendered" 'clawport_host = os.environ.get("CLAWPORT_HOST", "").strip()'
 }
 
 main() {
