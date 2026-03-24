@@ -177,6 +177,7 @@ test_apps_phase_dry_run_generates_registry_and_helpers() {
   assert_contains "$output_file" "sudo -u openclaw -H /bin/bash -lc git clone --branch master --depth 1 https://github.com/abhi1693/openclaw-mission-control.git ${edge_root}/apps/mission-control-src"
   assert_contains "$output_file" "[apps] ensuring ClawPort source at ${edge_root}/apps/clawport-ui-src"
   assert_contains "$output_file" "sudo -u openclaw -H /bin/bash -lc git clone --branch main --depth 1 https://github.com/JohnRiceML/clawport-ui.git ${edge_root}/apps/clawport-ui-src"
+  assert_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/apps/clawport-ui-src/Dockerfile"
   assert_contains "$output_file" "[apps] ensuring app runtime paths are owned by openclaw"
   assert_contains "$output_file" "chown -R openclaw:openclaw ${edge_root}/apps"
   assert_contains "$output_file" "install -d -m 0755 -o openclaw -g openclaw ${edge_root}/apps/hub-config"

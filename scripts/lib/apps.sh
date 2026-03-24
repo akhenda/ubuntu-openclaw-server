@@ -65,6 +65,37 @@ networks:
 EOF
 }
 
+apps_render_clawport_dockerfile() {
+  cat <<'EOF'
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm install
+
+FROM node:22-alpine AS builder
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+
+COPY --from=builder /app ./
+
+EXPOSE 3000
+
+CMD ["npm", "run", "start"]
+EOF
+}
+
 apps_render_register_script() {
   cat <<EOF
 #!/usr/bin/env python3
@@ -906,6 +937,16 @@ apps_sync_clawport_source_if_enabled() {
     die "[apps] ClawPort package.json missing: ${CLAWPORT_SOURCE_DIR}/package.json"
 }
 
+apps_write_clawport_runtime_files_if_enabled() {
+  if [[ "${CLAWPORT_ENABLE}" != "true" ]]; then
+    return 0
+  fi
+
+  local clawport_dockerfile
+  clawport_dockerfile="$(apps_render_clawport_dockerfile)"
+  apps_write_content_if_changed "${CLAWPORT_SOURCE_DIR}/Dockerfile" "0644" "${clawport_dockerfile}" || true
+}
+
 apps_fix_runtime_permissions() {
   log_info "[apps] ensuring app runtime paths are owned by ${RUNTIME_USER}"
   apps_run_root install -d -m 0755 -o "${RUNTIME_USER}" -g "${RUNTIME_USER}" "${APPS_ROOT_DIR}"
@@ -981,6 +1022,7 @@ phase_apps() {
   apps_write_runtime_files
   apps_sync_mission_control_source_if_enabled
   apps_sync_clawport_source_if_enabled
+  apps_write_clawport_runtime_files_if_enabled
   apps_fix_runtime_permissions
   apps_ensure_hub_during_install
   log_info "[apps] apps registry setup complete"

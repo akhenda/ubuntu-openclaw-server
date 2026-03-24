@@ -233,6 +233,7 @@ verify_apps_artifacts() {
   fi
   if [[ "${CLAWPORT_ENABLE}" == "true" ]]; then
     verify_require_file "${CLAWPORT_SOURCE_DIR}/package.json" "ClawPort source"
+    verify_require_file "${CLAWPORT_SOURCE_DIR}/Dockerfile" "ClawPort Dockerfile"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "CLAWPORT_SERVICE_NAME" "Hub ensure helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "homepage.name=ClawPort" "Hub ensure helper"
   fi
