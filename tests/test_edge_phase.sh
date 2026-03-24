@@ -75,7 +75,8 @@ KULA_ENABLE=true
 KULA_SERVICE_NAME=kula
 KULA_HOST=monitor.akhenda.net
 KULA_IMAGE=c0m4r/kula:latest
-KULA_PORT=3000
+KULA_PORT=27960
+KULA_LISTEN=0.0.0.0
 EDGE_NETWORK_NAME=openclaw-edge
 EDGE_SUBNET=172.30.0.0/24
 TRAEFIK_IP=172.30.0.2
@@ -192,11 +193,11 @@ test_edge_phase_includes_kula_monitor_route() {
   local rendered
   rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/edge.sh'; \
     KULA_HOST=monitor.akhenda.net; \
-    KULA_PORT=3000; \
+    KULA_PORT=27960; \
     edge_render_kula_dynamic_config")"
 
   assert_text_contains "$rendered" 'Host(`monitor.akhenda.net`)'
-  assert_text_contains "$rendered" 'url: http://host.docker.internal:3000'
+  assert_text_contains "$rendered" 'url: http://host.docker.internal:27960'
 }
 
 main() {

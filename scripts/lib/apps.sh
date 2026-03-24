@@ -247,6 +247,7 @@ KULA_SERVICE_NAME="\${KULA_SERVICE_NAME:-${KULA_SERVICE_NAME}}"
 KULA_HOST="\${KULA_HOST:-${KULA_HOST}}"
 KULA_IMAGE="\${KULA_IMAGE:-${KULA_IMAGE}}"
 KULA_PORT="\${KULA_PORT:-${KULA_PORT}}"
+KULA_LISTEN="\${KULA_LISTEN:-${KULA_LISTEN}}"
 HUB_SERVICE_NAME="hub"
 HUB_IMAGE="ghcr.io/gethomepage/homepage:latest"
 HUB_CONFIG_DIR="\${APPS_ROOT_DIR}/hub-config"
@@ -373,7 +374,7 @@ export MISSION_CONTROL_RQ_QUEUE_NAME MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECOND
 export OPENCLAW_GATEWAY_PORT OPENCLAW_GATEWAY_TOKEN OPENCLAW_GATEWAY_PASSWORD
 export CLAWPORT_ENABLE CLAWPORT_SERVICE_NAME CLAWPORT_HOST CLAWPORT_SOURCE_DIR CLAWPORT_PORT
 export CLAWPORT_OPENCLAW_BIN CLAWPORT_WORKSPACE_PATH
-export KULA_ENABLE KULA_SERVICE_NAME KULA_HOST KULA_IMAGE KULA_PORT
+export KULA_ENABLE KULA_SERVICE_NAME KULA_HOST KULA_IMAGE KULA_PORT KULA_LISTEN
 "\${PYTHON_BIN}" - <<'PY'
 import os
 from ruamel.yaml import YAML
@@ -411,7 +412,8 @@ kula_enabled = os.environ.get("KULA_ENABLE", "false").strip().lower() == "true"
 kula_service_name = os.environ.get("KULA_SERVICE_NAME", "kula").strip() or "kula"
 kula_host = os.environ.get("KULA_HOST", "").strip()
 kula_image = os.environ.get("KULA_IMAGE", "c0m4r/kula:latest").strip() or "c0m4r/kula:latest"
-kula_port = os.environ.get("KULA_PORT", "3000").strip() or "3000"
+kula_port = os.environ.get("KULA_PORT", "27960").strip() or "27960"
+kula_listen = os.environ.get("KULA_LISTEN", "0.0.0.0").strip() or "0.0.0.0"
 services_config_path = os.path.join(hub_config_dir, "services.yaml")
 
 yaml = YAML()
@@ -692,7 +694,8 @@ if kula_enabled:
             "/proc:/proc:ro",
         ],
         "environment": {
-            "PORT": kula_port,
+            "KULA_PORT": kula_port,
+            "KULA_LISTEN": kula_listen,
         },
         "labels": [
             "homepage.group=Apps",

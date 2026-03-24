@@ -57,7 +57,8 @@ setup_apps_context() {
   KULA_SERVICE_NAME="kula"
   KULA_HOST="monitor.example.com"
   KULA_IMAGE="c0m4r/kula:latest"
-  KULA_PORT="3000"
+  KULA_PORT="27960"
+  KULA_LISTEN="0.0.0.0"
   SOCKET_PROXY_ENDPOINT="http://docker-socket-proxy:2375"
 }
 
@@ -136,7 +137,8 @@ test_ensure_hub_script_contains_routes_and_homepage_runtime() {
   assert_contains_text "$ensure_hub_script" 'KULA_SERVICE_NAME="${KULA_SERVICE_NAME:-kula}"'
   assert_contains_text "$ensure_hub_script" 'KULA_HOST="${KULA_HOST:-monitor.example.com}"'
   assert_contains_text "$ensure_hub_script" 'KULA_IMAGE="${KULA_IMAGE:-c0m4r/kula:latest}"'
-  assert_contains_text "$ensure_hub_script" 'KULA_PORT="${KULA_PORT:-3000}"'
+  assert_contains_text "$ensure_hub_script" 'KULA_PORT="${KULA_PORT:-27960}"'
+  assert_contains_text "$ensure_hub_script" 'KULA_LISTEN="${KULA_LISTEN:-0.0.0.0}"'
   assert_contains_text "$ensure_hub_script" 'homepage.name=Mission Control'
   assert_contains_text "$ensure_hub_script" 'homepage.name=ClawPort'
   assert_contains_text "$ensure_hub_script" 'homepage.href=https://{clawport_host}'
@@ -146,8 +148,11 @@ test_ensure_hub_script_contains_routes_and_homepage_runtime() {
   assert_contains_text "$ensure_hub_script" 'kula_enabled = os.environ.get("KULA_ENABLE", "false").strip().lower() == "true"'
   assert_contains_text "$ensure_hub_script" 'kula_host = os.environ.get("KULA_HOST", "").strip()'
   assert_contains_text "$ensure_hub_script" 'kula_image = os.environ.get("KULA_IMAGE", "c0m4r/kula:latest").strip() or "c0m4r/kula:latest"'
-  assert_contains_text "$ensure_hub_script" 'kula_port = os.environ.get("KULA_PORT", "3000").strip() or "3000"'
+  assert_contains_text "$ensure_hub_script" 'kula_port = os.environ.get("KULA_PORT", "27960").strip() or "27960"'
+  assert_contains_text "$ensure_hub_script" 'kula_listen = os.environ.get("KULA_LISTEN", "0.0.0.0").strip() or "0.0.0.0"'
   assert_contains_text "$ensure_hub_script" '"image": kula_image'
+  assert_contains_text "$ensure_hub_script" '"KULA_PORT": kula_port'
+  assert_contains_text "$ensure_hub_script" '"KULA_LISTEN": kula_listen'
   assert_contains_text "$ensure_hub_script" '"network_mode": "host"'
   assert_contains_text "$ensure_hub_script" '"pid": "host"'
   assert_contains_text "$ensure_hub_script" '"/proc:/proc:ro"'

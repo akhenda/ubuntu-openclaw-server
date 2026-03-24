@@ -102,7 +102,8 @@ KULA_ENABLE=true
 KULA_SERVICE_NAME=kula
 KULA_HOST=monitor.akhenda.net
 KULA_IMAGE=c0m4r/kula:latest
-KULA_PORT=3000
+KULA_PORT=27960
+KULA_LISTEN=0.0.0.0
 EDGE_NETWORK_NAME=openclaw-edge
 EDGE_SUBNET=172.30.0.0/24
 TRAEFIK_IP=172.30.0.2
@@ -376,7 +377,8 @@ test_apps_phase_print_config_includes_kula_defaults() {
   assert_contains "$output_file" "KULA_SERVICE_NAME=kula"
   assert_contains "$output_file" "KULA_HOST=monitor.akhenda.net"
   assert_contains "$output_file" "KULA_IMAGE=c0m4r/kula:latest"
-  assert_contains "$output_file" "KULA_PORT=3000"
+  assert_contains "$output_file" "KULA_PORT=27960"
+  assert_contains "$output_file" "KULA_LISTEN=0.0.0.0"
 }
 
 main() {

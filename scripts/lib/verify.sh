@@ -252,6 +252,7 @@ verify_apps_artifacts() {
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "KULA_SERVICE_NAME" "Hub ensure helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" '"network_mode": "host"' "Hub ensure helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" '"pid": "host"' "Hub ensure helper"
+    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" '"KULA_LISTEN": kula_listen' "Hub ensure helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" 'homepage.name=Kula' "Hub ensure helper"
   fi
 }
