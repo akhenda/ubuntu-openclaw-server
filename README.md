@@ -129,12 +129,13 @@ Mission Control default app:
 
 1. `MISSION_CONTROL_ENABLE=true`
 2. `MISSION_CONTROL_HOST=mission-control.<APPS_DOMAIN>` (frontend)
-3. `MISSION_CONTROL_API_HOST=mission-control-api.<APPS_DOMAIN>` (backend API)
-4. `MISSION_CONTROL_AUTH_MODE=local` with `MISSION_CONTROL_LOCAL_AUTH_TOKEN` (50+ chars)
-5. Installer syncs `abhi1693/openclaw-mission-control` to `${APPS_ROOT_DIR}/mission-control-src`
-6. Services are managed in apps compose:
+3. Frontend uses same-origin API routing at `https://mission-control.<APPS_DOMAIN>/api/...`
+4. Optional: `MISSION_CONTROL_API_HOST=mission-control-api.<APPS_DOMAIN>` as a legacy backend alias
+5. `MISSION_CONTROL_AUTH_MODE=local` with `MISSION_CONTROL_LOCAL_AUTH_TOKEN` (50+ chars)
+6. Installer syncs `abhi1693/openclaw-mission-control` to `${APPS_ROOT_DIR}/mission-control-src`
+7. Services are managed in apps compose:
    `mission-control-db`, `mission-control-redis`, `mission-control-backend`, `mission-control`, `mission-control-webhook-worker`
-7. Frontend and backend routes are exposed via Traefik and frontend card appears in Hub
+8. Traefik exposes the frontend host and routes `/api` to the backend; the frontend card appears in Hub
 
 Tailscale test-mode:
 

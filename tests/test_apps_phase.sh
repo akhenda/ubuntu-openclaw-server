@@ -253,10 +253,73 @@ EOF
   assert_not_contains "$output_file" "[apps] [dry-run] would update ${edge_root}/apps/docker-compose.yml"
 }
 
+test_apps_phase_defaults_mission_control_to_same_origin_api() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/apps.sh'; \
+    APPS_COMPOSE_FILE=/opt/openclaw/apps/docker-compose.yml; \
+    EDGE_NETWORK_NAME=openclaw-edge; \
+    HUB_PRIMARY_HOST=hub.akhenda.net; HUB_ALIAS_HOST=apps.akhenda.net; HUB_SERVICE_NAME=hub; HUB_IMAGE=ghcr.io/gethomepage/homepage:latest; HUB_CONFIG_DIR=/opt/openclaw/apps/hub-config; \
+    MISSION_CONTROL_ENABLE=true; \
+    MISSION_CONTROL_SERVICE_NAME=mission-control; \
+    MISSION_CONTROL_HOST=mission-control.akhenda.net; \
+    MISSION_CONTROL_API_HOST=''; \
+    MISSION_CONTROL_FRONTEND_DIR=/opt/openclaw/apps/mission-control-src/frontend; \
+    MISSION_CONTROL_SOURCE_DIR=/opt/openclaw/apps/mission-control-src; \
+    MISSION_CONTROL_AUTH_MODE=local; \
+    MISSION_CONTROL_LOCAL_AUTH_TOKEN=12345678901234567890123456789012345678901234567890; \
+    MISSION_CONTROL_DB_AUTO_MIGRATE=true; \
+    MISSION_CONTROL_POSTGRES_DB=mission_control; \
+    MISSION_CONTROL_POSTGRES_USER=postgres; \
+    MISSION_CONTROL_POSTGRES_PASSWORD=postgres; \
+    MISSION_CONTROL_RQ_QUEUE_NAME=default; \
+    MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS=2.0; \
+    MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES=3; \
+    PYTHON_BIN=python3; \
+    apps_render_ensure_hub_script")"
+
+  assert_text_contains "$rendered" 'mission_control_frontend_api_url = "/api"'
+  assert_text_contains "$rendered" 'mission_control_public_base_url = f"https://{mission_control_host}"'
+  assert_text_contains "$rendered" 'PathPrefix("/api")'
+  assert_text_contains "$rendered" 'middlewares={mission_control_backend_service_name}-strip-api-prefix'
+  assert_text_contains "$rendered" 'stripprefix.prefixes=/api'
+  assert_not_contains <(printf '%s' "$rendered") 'raise SystemExit("MISSION_CONTROL_API_HOST must be set when MISSION_CONTROL_ENABLE=true")'
+}
+
+test_apps_phase_optionally_keeps_legacy_mission_control_api_host() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/apps.sh'; \
+    APPS_COMPOSE_FILE=/opt/openclaw/apps/docker-compose.yml; \
+    EDGE_NETWORK_NAME=openclaw-edge; \
+    HUB_PRIMARY_HOST=hub.akhenda.net; HUB_ALIAS_HOST=apps.akhenda.net; HUB_SERVICE_NAME=hub; HUB_IMAGE=ghcr.io/gethomepage/homepage:latest; HUB_CONFIG_DIR=/opt/openclaw/apps/hub-config; \
+    MISSION_CONTROL_ENABLE=true; \
+    MISSION_CONTROL_SERVICE_NAME=mission-control; \
+    MISSION_CONTROL_HOST=mission-control.akhenda.net; \
+    MISSION_CONTROL_API_HOST=mission-control-api.akhenda.net; \
+    MISSION_CONTROL_FRONTEND_DIR=/opt/openclaw/apps/mission-control-src/frontend; \
+    MISSION_CONTROL_SOURCE_DIR=/opt/openclaw/apps/mission-control-src; \
+    MISSION_CONTROL_AUTH_MODE=local; \
+    MISSION_CONTROL_LOCAL_AUTH_TOKEN=12345678901234567890123456789012345678901234567890; \
+    MISSION_CONTROL_DB_AUTO_MIGRATE=true; \
+    MISSION_CONTROL_POSTGRES_DB=mission_control; \
+    MISSION_CONTROL_POSTGRES_USER=postgres; \
+    MISSION_CONTROL_POSTGRES_PASSWORD=postgres; \
+    MISSION_CONTROL_RQ_QUEUE_NAME=default; \
+    MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS=2.0; \
+    MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES=3; \
+    PYTHON_BIN=python3; \
+    apps_render_ensure_hub_script")"
+
+  assert_text_contains "$rendered" 'mission_control_frontend_api_url = "/api"'
+  assert_text_contains "$rendered" 'mission_control_api_host = os.environ.get("MISSION_CONTROL_API_HOST", "").strip()'
+  assert_text_contains "$rendered" 'mission_control_backend_service_name}-legacy.rule=Host("{mission_control_api_host}")'
+}
+
 main() {
   test_apps_phase_dry_run_generates_registry_and_helpers
   test_apps_phase_can_be_disabled
   test_apps_phase_preserves_existing_compose_file
+  test_apps_phase_defaults_mission_control_to_same_origin_api
+  test_apps_phase_optionally_keeps_legacy_mission_control_api_host
   test_apps_deploy_script_uses_explicit_project_directory
   echo "PASS: test_apps_phase.sh"
 }

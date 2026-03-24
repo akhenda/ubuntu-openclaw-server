@@ -391,8 +391,6 @@ def extract_host_from_rule(rule):
 if mission_control_enabled:
     if not mission_control_host:
         raise SystemExit("MISSION_CONTROL_HOST must be set when MISSION_CONTROL_ENABLE=true")
-    if not mission_control_api_host:
-        raise SystemExit("MISSION_CONTROL_API_HOST must be set when MISSION_CONTROL_ENABLE=true")
     if not mission_control_frontend_dir:
         raise SystemExit("MISSION_CONTROL_FRONTEND_DIR must be set when MISSION_CONTROL_ENABLE=true")
     if not mission_control_source_dir:
@@ -411,7 +409,8 @@ if mission_control_enabled:
         f"@{mission_control_db_service_name}:5432/{mission_control_postgres_db}"
     )
     mission_control_redis_url = f"redis://{mission_control_redis_service_name}:6379/0"
-    mission_control_api_base_url = f"https://{mission_control_api_host}"
+    mission_control_public_base_url = f"https://{mission_control_host}"
+    mission_control_frontend_api_url = "/api"
 
     networks[mission_control_internal_network] = {}
     volumes = doc.setdefault("volumes", {})
@@ -433,10 +432,21 @@ if mission_control_enabled:
     mission_control_backend_labels = [
         "traefik.enable=true",
         f"traefik.docker.network={edge_network_name}",
-        f'traefik.http.routers.{mission_control_backend_service_name}.rule=Host("{mission_control_api_host}")',
+        f'traefik.http.routers.{mission_control_backend_service_name}.rule=Host("{mission_control_host}") && PathPrefix("/api")',
         f"traefik.http.routers.{mission_control_backend_service_name}.entrypoints=web",
+        f"traefik.http.routers.{mission_control_backend_service_name}.priority=100",
+        f"traefik.http.routers.{mission_control_backend_service_name}.middlewares={mission_control_backend_service_name}-strip-api-prefix",
+        f"traefik.http.middlewares.{mission_control_backend_service_name}-strip-api-prefix.stripprefix.prefixes=/api",
         f"traefik.http.services.{mission_control_backend_service_name}.loadbalancer.server.port=8000",
     ]
+    if mission_control_api_host:
+        mission_control_backend_labels.extend(
+            [
+                f'traefik.http.routers.{mission_control_backend_service_name}-legacy.rule=Host("{mission_control_api_host}")',
+                f"traefik.http.routers.{mission_control_backend_service_name}-legacy.entrypoints=web",
+                f"traefik.http.routers.{mission_control_backend_service_name}-legacy.service={mission_control_backend_service_name}",
+            ]
+        )
 
     services[mission_control_db_service_name] = {
         "image": "postgres:16-alpine",
@@ -483,7 +493,7 @@ if mission_control_enabled:
             "CORS_ORIGINS": f"https://{mission_control_host}",
             "AUTH_MODE": mission_control_auth_mode,
             "LOCAL_AUTH_TOKEN": mission_control_local_auth_token,
-            "BASE_URL": mission_control_api_base_url,
+            "BASE_URL": mission_control_public_base_url,
             "RQ_REDIS_URL": mission_control_redis_url,
             "RQ_QUEUE_NAME": mission_control_rq_queue_name,
             "RQ_DISPATCH_THROTTLE_SECONDS": mission_control_rq_dispatch_throttle_seconds,
@@ -501,13 +511,13 @@ if mission_control_enabled:
         "build": {
             "context": mission_control_frontend_dir,
             "args": {
-                "NEXT_PUBLIC_API_URL": mission_control_api_base_url,
+                "NEXT_PUBLIC_API_URL": mission_control_frontend_api_url,
                 "NEXT_PUBLIC_AUTH_MODE": mission_control_auth_mode,
             },
         },
         "restart": "unless-stopped",
         "environment": {
-            "NEXT_PUBLIC_API_URL": mission_control_api_base_url,
+            "NEXT_PUBLIC_API_URL": mission_control_frontend_api_url,
             "NEXT_PUBLIC_AUTH_MODE": mission_control_auth_mode,
         },
         "depends_on": {
@@ -530,7 +540,7 @@ if mission_control_enabled:
             "CORS_ORIGINS": f"https://{mission_control_host}",
             "AUTH_MODE": mission_control_auth_mode,
             "LOCAL_AUTH_TOKEN": mission_control_local_auth_token,
-            "BASE_URL": mission_control_api_base_url,
+            "BASE_URL": mission_control_public_base_url,
             "RQ_REDIS_URL": mission_control_redis_url,
             "RQ_QUEUE_NAME": mission_control_rq_queue_name,
             "RQ_DISPATCH_THROTTLE_SECONDS": mission_control_rq_dispatch_throttle_seconds,
@@ -646,7 +656,10 @@ with open(services_config_path, "w", encoding="utf-8") as f:
 
 print(f"OK: ensured hub service routes -> {', '.join(route_hosts)}")
 if mission_control_enabled:
-    print(f"OK: ensured mission control routes -> {mission_control_host}, {mission_control_api_host}")
+    mission_control_routes = [mission_control_host]
+    if mission_control_api_host:
+        mission_control_routes.append(mission_control_api_host)
+    print(f"OK: ensured mission control routes -> {', '.join(mission_control_routes)}")
 print(f"OK: wrote hub services catalog -> {services_config_path}")
 PY
 
