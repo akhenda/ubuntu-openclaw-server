@@ -160,6 +160,11 @@ set_default_config() {
   : "${CLAWPORT_PORT:=3000}"
   : "${CLAWPORT_OPENCLAW_BIN:=${OPENCLAW_BIN}}"
   : "${CLAWPORT_WORKSPACE_PATH:=${OPENCLAW_RUNTIME_HOME}/.openclaw/workspace}"
+  : "${KULA_ENABLE:=true}"
+  : "${KULA_SERVICE_NAME:=kula}"
+  : "${KULA_HOST:=monitor.${APPS_DOMAIN}}"
+  : "${KULA_IMAGE:=c0m4r/kula:latest}"
+  : "${KULA_PORT:=3000}"
   : "${REPORT_ENABLE:=true}"
   : "${REPORT_SCRIPT:=${DNS_BIN_DIR}/report.sh}"
   : "${REPORT_FAIL_ON_SEND:=false}"
@@ -196,6 +201,7 @@ set_default_config() {
   export MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECONDS MISSION_CONTROL_RQ_DISPATCH_MAX_RETRIES
   export CLAWPORT_ENABLE CLAWPORT_SERVICE_NAME CLAWPORT_HOST CLAWPORT_SOURCE_REPO CLAWPORT_SOURCE_REF
   export CLAWPORT_SOURCE_DIR CLAWPORT_PORT CLAWPORT_OPENCLAW_BIN CLAWPORT_WORKSPACE_PATH
+  export KULA_ENABLE KULA_SERVICE_NAME KULA_HOST KULA_IMAGE KULA_PORT
   export SOCKET_PROXY_ENABLE SOCKET_PROXY_IMAGE SOCKET_PROXY_IP SOCKET_PROXY_ENDPOINT
   export MOTD_ENABLE MOTD_SCRIPT_PATH
   export OH_MY_ZSH_ENABLE OH_MY_ZSH_REPO OH_MY_ZSH_THEME OH_MY_ZSH_PLUGINS OH_MY_ZSH_THEME_URL OH_MY_Z_SH_URL
@@ -460,6 +466,25 @@ validate_config() {
     validate_path_is_absolute CLAWPORT_OPENCLAW_BIN
     validate_path_is_absolute CLAWPORT_WORKSPACE_PATH
   fi
+  validate_boolean_var KULA_ENABLE
+  validate_non_empty_trimmed_var KULA_SERVICE_NAME
+  [[ "${KULA_SERVICE_NAME}" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || \
+    die "KULA_SERVICE_NAME must be lowercase alphanumeric/hyphen (1-63 chars)"
+  [[ "${KULA_SERVICE_NAME}" != "traefik" ]] || \
+    die "KULA_SERVICE_NAME cannot be 'traefik'"
+  [[ "${KULA_SERVICE_NAME}" != "${BOT_NAME}" ]] || \
+    die "KULA_SERVICE_NAME cannot match BOT_NAME (${BOT_NAME})"
+  [[ "${KULA_SERVICE_NAME}" != "hub" ]] || \
+    die "KULA_SERVICE_NAME cannot be 'hub'"
+  [[ "${KULA_SERVICE_NAME}" != "${MISSION_CONTROL_SERVICE_NAME}" ]] || \
+    die "KULA_SERVICE_NAME cannot match MISSION_CONTROL_SERVICE_NAME (${MISSION_CONTROL_SERVICE_NAME})"
+  [[ "${KULA_SERVICE_NAME}" != "${CLAWPORT_SERVICE_NAME}" ]] || \
+    die "KULA_SERVICE_NAME cannot match CLAWPORT_SERVICE_NAME (${CLAWPORT_SERVICE_NAME})"
+  if [[ "${KULA_ENABLE}" == "true" ]]; then
+    validate_hostname_like_var KULA_HOST
+    validate_non_empty_trimmed_var KULA_IMAGE
+    validate_tcp_port "${KULA_PORT}" || die "KULA_PORT must be a valid TCP port number"
+  fi
   validate_boolean_var SOCKET_PROXY_ENABLE
   validate_ipv4 "${SOCKET_PROXY_IP}" || die "Invalid SOCKET_PROXY_IP: ${SOCKET_PROXY_IP}"
   [[ "${SOCKET_PROXY_ENDPOINT}" =~ ^https?://[a-zA-Z0-9._-]+:[0-9]+$ ]] || \
@@ -645,6 +670,11 @@ Configuration summary:
   CLAWPORT_PORT=${CLAWPORT_PORT}
   CLAWPORT_OPENCLAW_BIN=${CLAWPORT_OPENCLAW_BIN}
   CLAWPORT_WORKSPACE_PATH=${CLAWPORT_WORKSPACE_PATH}
+  KULA_ENABLE=${KULA_ENABLE}
+  KULA_SERVICE_NAME=${KULA_SERVICE_NAME}
+  KULA_HOST=${KULA_HOST}
+  KULA_IMAGE=${KULA_IMAGE}
+  KULA_PORT=${KULA_PORT}
   SOCKET_PROXY_ENABLE=${SOCKET_PROXY_ENABLE}
   SOCKET_PROXY_IMAGE=${SOCKET_PROXY_IMAGE}
   SOCKET_PROXY_IP=${SOCKET_PROXY_IP}

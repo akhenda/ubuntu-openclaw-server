@@ -46,6 +46,10 @@ edge_openclaw_dynamic_file() {
   printf '%s/openclaw.yml' "$(edge_traefik_dynamic_dir)"
 }
 
+edge_kula_dynamic_file() {
+  printf '%s/kula.yml' "$(edge_traefik_dynamic_dir)"
+}
+
 edge_cloudflared_config_file() {
   printf '%s/config.yml' "$(edge_cloudflared_dir)"
 }
@@ -177,6 +181,23 @@ http:
 EOF
 }
 
+edge_render_kula_dynamic_config() {
+  cat <<EOF
+http:
+  routers:
+    kula:
+      rule: Host(\`${KULA_HOST}\`)
+      entryPoints:
+        - web
+      service: kula
+  services:
+    kula:
+      loadBalancer:
+        servers:
+          - url: http://host.docker.internal:${KULA_PORT}
+EOF
+}
+
 edge_render_cloudflared_config() {
   cat <<EOF
 tunnel: ${TUNNEL_UUID}
@@ -279,11 +300,13 @@ edge_write_configs() {
   local changed="false"
   local traefik_cfg
   local openclaw_dynamic_cfg
+  local kula_dynamic_cfg
   local cloudflared_cfg
   local compose_cfg
 
   traefik_cfg="$(edge_render_traefik_config)"
   openclaw_dynamic_cfg="$(edge_render_openclaw_dynamic_config)"
+  kula_dynamic_cfg="$(edge_render_kula_dynamic_config)"
   cloudflared_cfg="$(edge_render_cloudflared_config)"
   compose_cfg="$(edge_render_compose)"
 
@@ -297,6 +320,12 @@ edge_write_configs() {
 
   if edge_write_content_if_changed "$(edge_openclaw_dynamic_file)" "0644" "${openclaw_dynamic_cfg}"; then
     changed="true"
+  fi
+
+  if [[ "${KULA_ENABLE:-false}" == "true" ]]; then
+    if edge_write_content_if_changed "$(edge_kula_dynamic_file)" "0644" "${kula_dynamic_cfg}"; then
+      changed="true"
+    fi
   fi
 
   if edge_write_content_if_changed "$(edge_compose_file)" "0644" "${compose_cfg}"; then

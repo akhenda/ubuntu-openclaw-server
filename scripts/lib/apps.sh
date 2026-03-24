@@ -242,6 +242,11 @@ CLAWPORT_SOURCE_DIR="\${CLAWPORT_SOURCE_DIR:-${CLAWPORT_SOURCE_DIR}}"
 CLAWPORT_PORT="\${CLAWPORT_PORT:-${CLAWPORT_PORT}}"
 CLAWPORT_OPENCLAW_BIN="\${CLAWPORT_OPENCLAW_BIN:-${CLAWPORT_OPENCLAW_BIN}}"
 CLAWPORT_WORKSPACE_PATH="\${CLAWPORT_WORKSPACE_PATH:-${CLAWPORT_WORKSPACE_PATH}}"
+KULA_ENABLE="\${KULA_ENABLE:-${KULA_ENABLE}}"
+KULA_SERVICE_NAME="\${KULA_SERVICE_NAME:-${KULA_SERVICE_NAME}}"
+KULA_HOST="\${KULA_HOST:-${KULA_HOST}}"
+KULA_IMAGE="\${KULA_IMAGE:-${KULA_IMAGE}}"
+KULA_PORT="\${KULA_PORT:-${KULA_PORT}}"
 HUB_SERVICE_NAME="hub"
 HUB_IMAGE="ghcr.io/gethomepage/homepage:latest"
 HUB_CONFIG_DIR="\${APPS_ROOT_DIR}/hub-config"
@@ -368,6 +373,7 @@ export MISSION_CONTROL_RQ_QUEUE_NAME MISSION_CONTROL_RQ_DISPATCH_THROTTLE_SECOND
 export OPENCLAW_GATEWAY_PORT OPENCLAW_GATEWAY_TOKEN OPENCLAW_GATEWAY_PASSWORD
 export CLAWPORT_ENABLE CLAWPORT_SERVICE_NAME CLAWPORT_HOST CLAWPORT_SOURCE_DIR CLAWPORT_PORT
 export CLAWPORT_OPENCLAW_BIN CLAWPORT_WORKSPACE_PATH
+export KULA_ENABLE KULA_SERVICE_NAME KULA_HOST KULA_IMAGE KULA_PORT
 "\${PYTHON_BIN}" - <<'PY'
 import os
 from ruamel.yaml import YAML
@@ -401,6 +407,11 @@ clawport_source_dir = os.environ.get("CLAWPORT_SOURCE_DIR", "").strip()
 clawport_port = os.environ.get("CLAWPORT_PORT", "3000").strip() or "3000"
 clawport_openclaw_bin = os.environ.get("CLAWPORT_OPENCLAW_BIN", "").strip()
 clawport_workspace_path = os.environ.get("CLAWPORT_WORKSPACE_PATH", "").strip()
+kula_enabled = os.environ.get("KULA_ENABLE", "false").strip().lower() == "true"
+kula_service_name = os.environ.get("KULA_SERVICE_NAME", "kula").strip() or "kula"
+kula_host = os.environ.get("KULA_HOST", "").strip()
+kula_image = os.environ.get("KULA_IMAGE", "c0m4r/kula:latest").strip() or "c0m4r/kula:latest"
+kula_port = os.environ.get("KULA_PORT", "3000").strip() or "3000"
 services_config_path = os.path.join(hub_config_dir, "services.yaml")
 
 yaml = YAML()
@@ -666,6 +677,34 @@ if clawport_enabled:
 else:
     services.pop(clawport_service_name, None)
 
+if kula_enabled:
+    if not kula_host:
+        raise SystemExit("KULA_HOST must be set when KULA_ENABLE=true")
+    if not kula_port.isdigit():
+        raise SystemExit("KULA_PORT must be numeric when KULA_ENABLE=true")
+
+    services[kula_service_name] = {
+        "image": kula_image,
+        "restart": "unless-stopped",
+        "network_mode": "host",
+        "pid": "host",
+        "volumes": [
+            "/proc:/proc:ro",
+        ],
+        "environment": {
+            "PORT": kula_port,
+        },
+        "labels": [
+            "homepage.group=Apps",
+            "homepage.name=Kula",
+            "homepage.icon=mdi-chart-line",
+            f"homepage.href=https://{kula_host}",
+            "homepage.description=Host monitoring dashboard",
+        ],
+    }
+else:
+    services.pop(kula_service_name, None)
+
 grouped_services = {}
 for service_name, service_cfg in services.items():
     if service_name == hub_service_name:
@@ -760,6 +799,8 @@ if mission_control_enabled:
     print(f"OK: ensured mission control routes -> {', '.join(mission_control_routes)}")
 if clawport_enabled:
     print(f"OK: ensured clawport route -> {clawport_host}")
+if kula_enabled:
+    print(f"OK: ensured kula route -> {kula_host}")
 print(f"OK: wrote hub services catalog -> {services_config_path}")
 PY
 
@@ -789,6 +830,12 @@ if [[ "\${CLAWPORT_ENABLE}" == "true" ]]; then
     "\${CLAWPORT_SERVICE_NAME}"
   docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" ps \
     "\${CLAWPORT_SERVICE_NAME}"
+fi
+if [[ "\${KULA_ENABLE}" == "true" ]]; then
+  docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" up -d \
+    "\${KULA_SERVICE_NAME}"
+  docker compose --project-directory "\${PROJECT_DIR}" -f "\${APPS_COMPOSE_FILE}" ps \
+    "\${KULA_SERVICE_NAME}"
 fi
 EOF
 }

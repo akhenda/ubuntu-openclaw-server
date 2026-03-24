@@ -98,6 +98,11 @@ CLAWPORT_SOURCE_DIR=${edge_root}/apps/clawport-ui-src
 CLAWPORT_PORT=3000
 CLAWPORT_OPENCLAW_BIN=/home/openclaw/.npm-global/bin/openclaw
 CLAWPORT_WORKSPACE_PATH=/home/openclaw/.openclaw/workspace
+KULA_ENABLE=true
+KULA_SERVICE_NAME=kula
+KULA_HOST=monitor.akhenda.net
+KULA_IMAGE=c0m4r/kula:latest
+KULA_PORT=3000
 EDGE_NETWORK_NAME=openclaw-edge
 EDGE_SUBNET=172.30.0.0/24
 TRAEFIK_IP=172.30.0.2
@@ -344,12 +349,43 @@ test_apps_phase_optionally_keeps_legacy_mission_control_api_host() {
   assert_text_contains "$rendered" 'clawport_host = os.environ.get("CLAWPORT_HOST", "").strip()'
 }
 
+test_apps_phase_print_config_includes_kula_defaults() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' RETURN
+
+  local edge_root="$tmp_dir/root"
+  local env_file="$tmp_dir/.env"
+  local output_file="$tmp_dir/output.log"
+
+  make_valid_env "$env_file" "$edge_root"
+  make_common_state "$tmp_dir"
+
+  OS_RELEASE_FILE="$tmp_dir/os-release" \
+  USER_PASSWD_FILE="$tmp_dir/passwd" \
+  USER_GROUP_FILE="$tmp_dir/group" \
+  SUDOERS_FILE="$tmp_dir/sudoers" \
+  SSHD_MAIN_CONFIG="$tmp_dir/sshd_config" \
+  SSHD_CONFIG_DIR="$tmp_dir/sshd_config.d" \
+  SSHD_HARDENING_FILE="$tmp_dir/sshd_config.d/99-openclaw-hardening.conf" \
+  CURRENT_LOGIN_USER="hendaz" \
+  DOCKER_ARCH=amd64 \
+  bash "$ROOT_DIR/scripts/install.sh" --config "$env_file" --print-config --check-config >"$output_file" 2>&1
+
+  assert_contains "$output_file" "KULA_ENABLE=true"
+  assert_contains "$output_file" "KULA_SERVICE_NAME=kula"
+  assert_contains "$output_file" "KULA_HOST=monitor.akhenda.net"
+  assert_contains "$output_file" "KULA_IMAGE=c0m4r/kula:latest"
+  assert_contains "$output_file" "KULA_PORT=3000"
+}
+
 main() {
   test_apps_phase_dry_run_generates_registry_and_helpers
   test_apps_phase_can_be_disabled
   test_apps_phase_preserves_existing_compose_file
   test_apps_phase_defaults_mission_control_to_same_origin_api
   test_apps_phase_optionally_keeps_legacy_mission_control_api_host
+  test_apps_phase_print_config_includes_kula_defaults
   test_apps_deploy_script_uses_explicit_project_directory
   echo "PASS: test_apps_phase.sh"
 }

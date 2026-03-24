@@ -53,6 +53,11 @@ setup_apps_context() {
   CLAWPORT_PORT="3000"
   CLAWPORT_OPENCLAW_BIN="/home/openclaw/.npm-global/bin/openclaw"
   CLAWPORT_WORKSPACE_PATH="/home/openclaw/.openclaw/workspace"
+  KULA_ENABLE="true"
+  KULA_SERVICE_NAME="kula"
+  KULA_HOST="monitor.example.com"
+  KULA_IMAGE="c0m4r/kula:latest"
+  KULA_PORT="3000"
   SOCKET_PROXY_ENDPOINT="http://docker-socket-proxy:2375"
 }
 
@@ -127,12 +132,27 @@ test_ensure_hub_script_contains_routes_and_homepage_runtime() {
   assert_contains_text "$ensure_hub_script" 'CLAWPORT_PORT="${CLAWPORT_PORT:-3000}"'
   assert_contains_text "$ensure_hub_script" 'CLAWPORT_OPENCLAW_BIN="${CLAWPORT_OPENCLAW_BIN:-/home/openclaw/.npm-global/bin/openclaw}"'
   assert_contains_text "$ensure_hub_script" 'CLAWPORT_WORKSPACE_PATH="${CLAWPORT_WORKSPACE_PATH:-/home/openclaw/.openclaw/workspace}"'
+  assert_contains_text "$ensure_hub_script" 'KULA_ENABLE="${KULA_ENABLE:-true}"'
+  assert_contains_text "$ensure_hub_script" 'KULA_SERVICE_NAME="${KULA_SERVICE_NAME:-kula}"'
+  assert_contains_text "$ensure_hub_script" 'KULA_HOST="${KULA_HOST:-monitor.example.com}"'
+  assert_contains_text "$ensure_hub_script" 'KULA_IMAGE="${KULA_IMAGE:-c0m4r/kula:latest}"'
+  assert_contains_text "$ensure_hub_script" 'KULA_PORT="${KULA_PORT:-3000}"'
   assert_contains_text "$ensure_hub_script" 'homepage.name=Mission Control'
   assert_contains_text "$ensure_hub_script" 'homepage.name=ClawPort'
   assert_contains_text "$ensure_hub_script" 'homepage.href=https://{clawport_host}'
   assert_contains_text "$ensure_hub_script" '"OPENCLAW_BIN": clawport_openclaw_bin'
   assert_contains_text "$ensure_hub_script" '"WORKSPACE_PATH": clawport_workspace_path'
   assert_contains_text "$ensure_hub_script" 'traefik.http.routers.{clawport_service_name}.rule=Host("{clawport_host}")'
+  assert_contains_text "$ensure_hub_script" 'kula_enabled = os.environ.get("KULA_ENABLE", "false").strip().lower() == "true"'
+  assert_contains_text "$ensure_hub_script" 'kula_host = os.environ.get("KULA_HOST", "").strip()'
+  assert_contains_text "$ensure_hub_script" 'kula_image = os.environ.get("KULA_IMAGE", "c0m4r/kula:latest").strip() or "c0m4r/kula:latest"'
+  assert_contains_text "$ensure_hub_script" 'kula_port = os.environ.get("KULA_PORT", "3000").strip() or "3000"'
+  assert_contains_text "$ensure_hub_script" '"image": kula_image'
+  assert_contains_text "$ensure_hub_script" '"network_mode": "host"'
+  assert_contains_text "$ensure_hub_script" '"pid": "host"'
+  assert_contains_text "$ensure_hub_script" '"/proc:/proc:ro"'
+  assert_contains_text "$ensure_hub_script" 'homepage.name=Kula'
+  assert_contains_text "$ensure_hub_script" 'homepage.href=https://{kula_host}'
   assert_contains_text "$ensure_hub_script" 'postgres:16-alpine'
   assert_contains_text "$ensure_hub_script" 'redis:7-alpine'
   assert_contains_text "$ensure_hub_script" 'backend/Dockerfile'

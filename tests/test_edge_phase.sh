@@ -25,6 +25,17 @@ assert_not_contains() {
   fi
 }
 
+assert_text_contains() {
+  local text="$1"
+  local pattern="$2"
+  if ! grep -Fq "$pattern" <<<"$text"; then
+    echo "Assertion failed: expected '$pattern' in rendered text" >&2
+    echo "--- rendered ---" >&2
+    printf '%s\n' "$text" >&2
+    exit 1
+  fi
+}
+
 make_valid_env() {
   local out="$1"
   local edge_root="$2"
@@ -60,6 +71,11 @@ TRAEFIK_DASHBOARD_HOST=traefik.akhenda.net
 OPENCLAW_MISSION_CONTROL_GATEWAY_HOST=gateway.akhenda.net
 TRAEFIK_DASHBOARD_USERS=admin:hashplaceholder
 CLOUDFLARED_CREDENTIALS_FILE=${creds_file}
+KULA_ENABLE=true
+KULA_SERVICE_NAME=kula
+KULA_HOST=monitor.akhenda.net
+KULA_IMAGE=c0m4r/kula:latest
+KULA_PORT=3000
 EDGE_NETWORK_NAME=openclaw-edge
 EDGE_SUBNET=172.30.0.0/24
 TRAEFIK_IP=172.30.0.2
@@ -135,6 +151,7 @@ test_edge_phase_dry_run_applies_stack() {
   assert_contains "$output_file" "[edge] configuring edge stack"
   assert_contains "$output_file" "[edge] [dry-run] would update ${edge_root}/edge/traefik/traefik.yml"
   assert_contains "$output_file" "[edge] [dry-run] would update ${edge_root}/edge/cloudflared/config.yml"
+  assert_contains "$output_file" "[edge] [dry-run] would update ${edge_root}/edge/traefik/dynamic/openclaw.yml"
   assert_contains "$output_file" "[edge] [dry-run] would update ${edge_root}/edge/docker-compose.yml"
   assert_contains "$output_file" "docker network inspect openclaw-edge"
   assert_contains "$output_file" "docker network create --subnet 172.30.0.0/24 openclaw-edge"
@@ -171,9 +188,21 @@ test_edge_phase_skips_start_without_credentials() {
   assert_not_contains "$output_file" "docker compose -f ${edge_root}/edge/docker-compose.yml up -d"
 }
 
+test_edge_phase_includes_kula_monitor_route() {
+  local rendered
+  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/edge.sh'; \
+    KULA_HOST=monitor.akhenda.net; \
+    KULA_PORT=3000; \
+    edge_render_kula_dynamic_config")"
+
+  assert_text_contains "$rendered" 'Host(`monitor.akhenda.net`)'
+  assert_text_contains "$rendered" 'url: http://host.docker.internal:3000'
+}
+
 main() {
   test_edge_phase_dry_run_applies_stack
   test_edge_phase_skips_start_without_credentials
+  test_edge_phase_includes_kula_monitor_route
   echo "PASS: test_edge_phase.sh"
 }
 
