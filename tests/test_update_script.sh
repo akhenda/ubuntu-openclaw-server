@@ -88,9 +88,29 @@ test_update_script_dry_run_can_request_pull() {
   assert_contains "$output_file" "[dry-run] git -C ${ROOT_DIR} pull --ff-only"
 }
 
+test_update_script_dry_run_can_override_version_and_restart_services() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap '[[ -n "${tmp_dir:-}" ]] && rm -rf "${tmp_dir}"' RETURN
+
+  local env_file="$tmp_dir/.env"
+  local output_file="$tmp_dir/output.log"
+
+  make_valid_env "$env_file"
+
+  bash "$ROOT_DIR/scripts/update_openclaw.sh" --config "$env_file" --dry-run --npm-version latest >"$output_file" 2>&1
+
+  assert_contains "$output_file" "[update] overriding OPENCLAW_NPM_VERSION=latest for this run"
+  assert_contains "$output_file" "[dry-run] bash ${ROOT_DIR}/scripts/install.sh --check-config --config "
+  assert_contains "$output_file" "OPENCLAW_NPM_VERSION=latest"
+  assert_contains "$output_file" "[dry-run] systemctl restart openclaw-gateway.service"
+  assert_contains "$output_file" "[dry-run] systemctl restart openclaw-apps.service"
+}
+
 main() {
   test_update_script_dry_run_uses_current_repo_without_pull
   test_update_script_dry_run_can_request_pull
+  test_update_script_dry_run_can_override_version_and_restart_services
   echo "PASS: test_update_script.sh"
 }
 
