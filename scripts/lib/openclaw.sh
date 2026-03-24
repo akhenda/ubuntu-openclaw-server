@@ -225,6 +225,9 @@ openclaw_render_config_json() {
   if [[ "${MISSION_CONTROL_ENABLE:-false}" == "true" ]]; then
     allowed_origins+=", \"https://${MISSION_CONTROL_HOST}\""
   fi
+  if [[ -n "${OPENCLAW_MISSION_CONTROL_GATEWAY_HOST:-}" ]]; then
+    allowed_origins+=", \"https://${OPENCLAW_MISSION_CONTROL_GATEWAY_HOST}\""
+  fi
 
   cat <<EOF_JSON
 {

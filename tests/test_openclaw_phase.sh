@@ -269,11 +269,12 @@ test_openclaw_config_bootstraps_app_builder_policy() {
   local rendered
   rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/openclaw.sh'; \
     BOT_NAME=mckay; APPS_DOMAIN=akhenda.net; TRAEFIK_IP=172.30.0.2; \
+    OPENCLAW_MISSION_CONTROL_GATEWAY_HOST=gateway.akhenda.net; \
     MISSION_CONTROL_ENABLE=true; MISSION_CONTROL_HOST=mission-control.akhenda.net; \
     openclaw_render_config_json")"
 
   assert_text_contains "$rendered" '"policies/deploy/AGENTS.md", "policies/deploy/APP_BUILDER.md", "APP_BUILDER.md"'
-  assert_text_contains "$rendered" '"allowedOrigins": ["https://mckay.akhenda.net", "https://mission-control.akhenda.net"]'
+  assert_text_contains "$rendered" '"allowedOrigins": ["https://mckay.akhenda.net", "https://mission-control.akhenda.net", "https://gateway.akhenda.net"]'
 }
 
 test_openclaw_renders_global_compose_env_with_real_values() {
