@@ -688,16 +688,21 @@ if kula_enabled:
     services[kula_service_name] = {
         "image": kula_image,
         "restart": "unless-stopped",
-        "network_mode": "host",
         "pid": "host",
         "volumes": [
             "/proc:/proc:ro",
         ],
+        "networks": [edge_network_name],
         "environment": {
             "KULA_PORT": kula_port,
             "KULA_LISTEN": kula_listen,
         },
         "labels": [
+            "traefik.enable=true",
+            f"traefik.docker.network={edge_network_name}",
+            f'traefik.http.routers.{kula_service_name}.rule=Host("{kula_host}")',
+            f"traefik.http.routers.{kula_service_name}.entrypoints=web",
+            f"traefik.http.services.{kula_service_name}.loadbalancer.server.port={kula_port}",
             "homepage.group=Apps",
             "homepage.name=Kula",
             "homepage.icon=mdi-chart-line",

@@ -134,18 +134,6 @@ verify_edge_artifacts() {
     "${EDGE_ROOT_DIR}/edge/traefik/dynamic/openclaw.yml" \
     "${OPENCLAW_MISSION_CONTROL_GATEWAY_HOST}" \
     "Traefik OpenClaw dynamic config"
-  if [[ "${KULA_ENABLE:-false}" == "true" ]]; then
-    verify_require_file "${EDGE_ROOT_DIR}/edge/traefik/dynamic/kula.yml" "Traefik Kula dynamic config"
-    verify_require_contains \
-      "${EDGE_ROOT_DIR}/edge/traefik/dynamic/kula.yml" \
-      "${KULA_HOST}" \
-      "Traefik Kula dynamic config"
-    verify_require_contains \
-      "${EDGE_ROOT_DIR}/edge/traefik/dynamic/kula.yml" \
-      "url: http://host.docker.internal:${KULA_PORT}" \
-      "Traefik Kula dynamic config"
-  fi
-
   if [[ "${SOCKET_PROXY_ENABLE}" == "true" ]]; then
     local edge_compose="${EDGE_ROOT_DIR}/edge/docker-compose.yml"
     local traefik_cfg="${EDGE_ROOT_DIR}/edge/traefik/traefik.yml"
@@ -250,9 +238,10 @@ verify_apps_artifacts() {
   fi
   if [[ "${KULA_ENABLE}" == "true" ]]; then
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" "KULA_SERVICE_NAME" "Hub ensure helper"
-    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" '"network_mode": "host"' "Hub ensure helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" '"pid": "host"' "Hub ensure helper"
+    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" '"networks": [edge_network_name]' "Hub ensure helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" '"KULA_LISTEN": kula_listen' "Hub ensure helper"
+    verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" 'traefik.http.routers.{kula_service_name}.rule=Host("{kula_host}")' "Hub ensure helper"
     verify_require_contains "${DNS_BIN_DIR}/ensure_hub.sh" 'homepage.name=Kula' "Hub ensure helper"
   fi
 }

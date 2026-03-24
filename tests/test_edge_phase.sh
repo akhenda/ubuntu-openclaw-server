@@ -189,21 +189,9 @@ test_edge_phase_skips_start_without_credentials() {
   assert_not_contains "$output_file" "docker compose -f ${edge_root}/edge/docker-compose.yml up -d"
 }
 
-test_edge_phase_includes_kula_monitor_route() {
-  local rendered
-  rendered="$(bash -lc "source '$ROOT_DIR/scripts/lib/edge.sh'; \
-    KULA_HOST=monitor.akhenda.net; \
-    KULA_PORT=27960; \
-    edge_render_kula_dynamic_config")"
-
-  assert_text_contains "$rendered" 'Host(`monitor.akhenda.net`)'
-  assert_text_contains "$rendered" 'url: http://host.docker.internal:27960'
-}
-
 main() {
   test_edge_phase_dry_run_applies_stack
   test_edge_phase_skips_start_without_credentials
-  test_edge_phase_includes_kula_monitor_route
   echo "PASS: test_edge_phase.sh"
 }
 
